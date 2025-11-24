@@ -146,6 +146,62 @@ export const useGalleryForm = (initialState?: Partial<GalleryFormSettings>) => {
 
     const specificAgeGroupOptions = useMemo(() => AGE_RANGE_OPTIONS.filter(opt => opt.value !== DEFAULT_AGE_RANGE), []);
 
+    // Helper: Apply Preset
+    const applyPreset = useCallback((settings: GalleryFormSettings) => {
+        setTopic(settings.topic);
+        setDiscussionContext(settings.discussionContext);
+        setSelectedWorldview(settings.selectedWorldview);
+        setCustomWorldviewText(settings.customWorldviewText);
+        setSelectedWorldviewEra(settings.selectedWorldviewEra);
+        setSelectedToxicityLevel(settings.selectedToxicityLevel);
+        setSelectedAnonymousNickRatio(settings.selectedAnonymousNickRatio);
+        setUserSpecies(settings.userSpecies);
+        setUserAffiliation(settings.userAffiliation);
+        setIsManualGenderRatio(settings.isManualGenderRatio);
+        setManualMalePercentage(settings.manualMalePercentage);
+        setIsManualAgeRange(settings.isManualAgeRange);
+        setManualSelectedAgeGroups(new Set(settings.manualSelectedAgeGroups));
+        setIsQualityUpgradeUnlocked(settings.isQualityUpgradeUnlocked);
+        setIsQualityUpgradeEnabled(settings.isQualityUpgradeEnabled);
+        setIsSearchEnabled(settings.isSearchEnabled);
+        setSelectedModel(settings.selectedModel);
+        setUserNicknameType(settings.userNicknameType);
+        setFixedNickname(settings.fixedNickname);
+        setUserReputation(settings.userReputation);
+    }, []);
+
+    // Helper: Get Current Settings for Save
+    const getCurrentSettings = useCallback((): GalleryFormSettings => {
+        return {
+            topic,
+            discussionContext,
+            selectedWorldview,
+            customWorldviewText,
+            selectedWorldviewEra,
+            selectedToxicityLevel,
+            selectedAnonymousNickRatio,
+            userSpecies,
+            userAffiliation,
+            isManualGenderRatio,
+            manualMalePercentage,
+            isManualAgeRange,
+            manualSelectedAgeGroups: Array.from(manualSelectedAgeGroups),
+            isQualityUpgradeUnlocked,
+            isQualityUpgradeEnabled,
+            isSearchEnabled,
+            selectedModel,
+            userNicknameType,
+            fixedNickname,
+            userReputation
+        };
+    }, [
+        topic, discussionContext, selectedWorldview, customWorldviewText, selectedWorldviewEra,
+        selectedToxicityLevel, selectedAnonymousNickRatio, userSpecies, userAffiliation,
+        isManualGenderRatio, manualMalePercentage, isManualAgeRange, manualSelectedAgeGroups,
+        isQualityUpgradeUnlocked, isQualityUpgradeEnabled, isSearchEnabled, selectedModel,
+        userNicknameType, fixedNickname, userReputation
+    ]);
+
     return {
         topic, setTopic,
         discussionContext, setDiscussionContext,
@@ -173,6 +229,8 @@ export const useGalleryForm = (initialState?: Partial<GalleryFormSettings>) => {
         getAgeRangeParam,
         getGenderRatioParam,
         validateForm,
+        applyPreset,
+        getCurrentSettings,
         errors,
         specificAgeGroupOptions,
         WORLDVIEW_OPTIONS,

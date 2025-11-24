@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useGalleryForm, GalleryFormValidationErrors } from '../hooks/useGalleryForm';
 import { LoadingSpinner } from './LoadingSpinner';
 import { FormSection } from './FormSection';
@@ -8,6 +8,9 @@ import { UserConfigSection } from './UserConfigSection';
 import { GenerationOptionsSection } from './GenerationOptionsSection';
 import { AdvancedOptionsSection } from './AdvancedOptionsSection';
 import { UserProfileSection } from './UserProfileSection';
+import { PresetSection } from './PresetSection';
+import { getPresets, saveUserPreset, deleteUserPreset } from '../services/presetService';
+import { Preset } from '../types';
 
 interface GalleryCreationFormProps {
     isLoading: boolean;
@@ -18,8 +21,34 @@ interface GalleryCreationFormProps {
 
 export const GalleryCreationForm: React.FC<GalleryCreationFormProps> = ({ isLoading, isApiKeyAvailable, onSubmit, setFormError }) => {
     const form = useGalleryForm({ isQualityUpgradeUnlocked: true });
+    
+    // Preset State
+    const [presets, setPresets] = useState<Preset[]>([]);
+
+    useEffect(() => {
+        setPresets(getPresets());
+    }, []);
+
+    const handleSavePreset = (name: string) => {
+        const currentSettings = form.getCurrentSettings();
+        const updatedPresets = saveUserPreset(name, currentSettings);
+        setPresets(updatedPresets);
+    };
+
+    const handleLoadPreset = (id: string) => {
+        const preset = presets.find(p => p.id === id);
+        if (preset) {
+            form.applyPreset(preset.settings);
+        }
+    };
+
+    const handleDeletePreset = (id: string) => {
+        const updatedPresets = deleteUserPreset(id);
+        setPresets(updatedPresets);
+    };
 
     const [openSections, setOpenSections] = useState<{ [key: string]: boolean }>({
+        presets: true,
         profile: true,
         worldview: true,
         user: false,
@@ -36,6 +65,7 @@ export const GalleryCreationForm: React.FC<GalleryCreationFormProps> = ({ isLoad
 
     const handleExpandAll = () => {
         setOpenSections({
+            presets: true,
             profile: true,
             worldview: true,
             user: true,
@@ -96,6 +126,23 @@ export const GalleryCreationForm: React.FC<GalleryCreationFormProps> = ({ isLoad
     return (
         <form onSubmit={handleSubmit} className="mb-8">
           <div className="space-y-4">
+            <FormSection
+                title="프리셋 (불러오기/저장)"
+                iconClass="fas fa-bookmark"
+                iconColorClass="text-yellow-500"
+                isOpen={openSections.presets}
+                onToggle={() => toggleSection('presets')}
+                id="presets"
+            >
+                <PresetSection
+                    presets={presets}
+                    onSavePreset={handleSavePreset}
+                    onLoadPreset={handleLoadPreset}
+                    onDeletePreset={handleDeletePreset}
+                    onExpandAllRequested={handleExpandAll}
+                />
+            </FormSection>
+
             <FormSection
                 title="내 프로필 설정"
                 iconClass="fas fa-id-card"
