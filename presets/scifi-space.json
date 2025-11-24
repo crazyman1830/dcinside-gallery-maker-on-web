@@ -1,0 +1,27 @@
+
+{
+  "id": "preset-example-scifi-space",
+  "name": "[예시] SF - 우주 무역",
+  "settings": {
+    "topic": "우주 무역",
+    "discussionContext": "안드로메다 은하 특산품 시세 급락 및 해적 출몰 구역 정보 공유",
+    "selectedWorldview": "NONE",
+    "customWorldviewText": "",
+    "selectedWorldviewEra": "FAR_FUTURE",
+    "selectedToxicityLevel": "MILD",
+    "selectedAnonymousNickRatio": "HIGH_ANON",
+    "userSpecies": "테란, 프로토스, 외계인 등",
+    "userAffiliation": "은하 상선 연합",
+    "isManualGenderRatio": false,
+    "manualMalePercentage": 50,
+    "isManualAgeRange": false,
+    "manualSelectedAgeGroups": [],
+    "isQualityUpgradeUnlocked": true,
+    "isQualityUpgradeEnabled": false,
+    "isSearchEnabled": false,
+    "selectedModel": "gemini-2.5-flash",
+    "userNicknameType": "ANONYMOUS",
+    "fixedNickname": "",
+    "userReputation": 50
+  }
+}

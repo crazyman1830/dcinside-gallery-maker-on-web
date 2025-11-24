@@ -1,0 +1,6 @@
+{
+  "name": "DCInside Gallery Maker on Web",
+  "description": "Generates a dcinside gallery-style webpage based on a user-provided topic using Gemini API.",
+  "requestFramePermissions": [],
+  "prompt": ""
+}

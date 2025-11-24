@@ -1,0 +1,27 @@
+
+{
+  "id": "preset-example-murim",
+  "name": "[예시] 무협 - 무공",
+  "settings": {
+    "topic": "무공",
+    "discussionContext": "가장 배우고 싶은 무공에 대한 논쟁",
+    "selectedWorldview": "MURIM",
+    "customWorldviewText": "",
+    "selectedWorldviewEra": "",
+    "selectedToxicityLevel": "MEDIUM",
+    "selectedAnonymousNickRatio": "BALANCED",
+    "userSpecies": "인간",
+    "userAffiliation": "",
+    "isManualGenderRatio": false,
+    "manualMalePercentage": 50,
+    "isManualAgeRange": false,
+    "manualSelectedAgeGroups": [],
+    "isQualityUpgradeUnlocked": true,
+    "isQualityUpgradeEnabled": false,
+    "isSearchEnabled": false,
+    "selectedModel": "gemini-2.5-flash",
+    "userNicknameType": "ANONYMOUS",
+    "fixedNickname": "",
+    "userReputation": 50
+  }
+}

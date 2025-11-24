@@ -1,0 +1,27 @@
+
+{
+  "id": "preset-example-prehistoric",
+  "name": "[예시] 선사시대 - 사냥",
+  "settings": {
+    "topic": "사냥",
+    "discussionContext": "최근 부족 주변에 나타난 매머드 무리를 사냥하는 방법에 대한 토론",
+    "selectedWorldview": "NONE",
+    "customWorldviewText": "",
+    "selectedWorldviewEra": "PREHISTORIC",
+    "selectedToxicityLevel": "MEDIUM",
+    "selectedAnonymousNickRatio": "BALANCED",
+    "userSpecies": "호모 사피엔스",
+    "userAffiliation": "",
+    "isManualGenderRatio": false,
+    "manualMalePercentage": 50,
+    "isManualAgeRange": false,
+    "manualSelectedAgeGroups": [],
+    "isQualityUpgradeUnlocked": true,
+    "isQualityUpgradeEnabled": false,
+    "isSearchEnabled": false,
+    "selectedModel": "gemini-2.5-flash",
+    "userNicknameType": "ANONYMOUS",
+    "fixedNickname": "",
+    "userReputation": 50
+  }
+}

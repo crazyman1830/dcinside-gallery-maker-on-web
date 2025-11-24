@@ -1,0 +1,27 @@
+
+{
+  "id": "preset-example-near-future",
+  "name": "[예시] 근미래 - 아포칼립스 요리",
+  "settings": {
+    "topic": "아포칼립스 요리",
+    "discussionContext": "방사능에 오염되지 않은 식재료를 구하는 팁과 변이 동식물 요리 레시피 공유",
+    "selectedWorldview": "NONE",
+    "customWorldviewText": "",
+    "selectedWorldviewEra": "NEAR_FUTURE",
+    "selectedToxicityLevel": "MEDIUM",
+    "selectedAnonymousNickRatio": "BALANCED",
+    "userSpecies": "생존자",
+    "userAffiliation": "",
+    "isManualGenderRatio": false,
+    "manualMalePercentage": 50,
+    "isManualAgeRange": false,
+    "manualSelectedAgeGroups": [],
+    "isQualityUpgradeUnlocked": true,
+    "isQualityUpgradeEnabled": false,
+    "isSearchEnabled": false,
+    "selectedModel": "gemini-2.5-flash",
+    "userNicknameType": "ANONYMOUS",
+    "fixedNickname": "",
+    "userReputation": 50
+  }
+}

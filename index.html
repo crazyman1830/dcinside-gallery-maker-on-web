@@ -1,0 +1,69 @@
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DCInside 갤러리 생성기</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          keyframes: {
+            fadeIn: {
+              '0%': { opacity: '0' },
+              '100%': { opacity: '1' },
+            },
+            fadeInUp: {
+              '0%': { opacity: '0', transform: 'translateY(10px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' },
+            }
+          },
+          animation: {
+            'fade-in': 'fadeIn 0.5s ease-out',
+            'fade-in-up': 'fadeInUp 0.5s ease-out',
+          }
+        }
+      }
+    }
+  </script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Noto Sans KR', sans-serif; }
+  </style>
+  <!-- 
+    Vite handles all dependency bundling.
+    The script tag below now points to your actual source entry file /index.tsx.
+    Vite will process this file, bundle it with all dependencies, 
+    and generate a new index.html in the 'dist' folder with a script tag 
+    pointing to the generated JavaScript bundle.
+  -->
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.1.0",
+    "react-dom": "https://esm.sh/react-dom@^19.1.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.1.0/",
+    "react/": "https://esm.sh/react@^19.1.0/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.0.1",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^4.5.2",
+    "vite": "https://esm.sh/vite@^6.3.5",
+    "path": "https://aistudiocdn.com/path@^0.12.7",
+    "fs": "https://aistudiocdn.com/fs@^0.0.1-security"
+  }
+}
+</script>
+</head>
+<body class="bg-slate-100/80 text-slate-900 antialiased selection:bg-indigo-100 selection:text-indigo-900 scroll-smooth">
+  <div id="root"></div>
+  <!-- 
+    This script tag now points to your TypeScript entry file.
+    Vite will use this to start the build process.
+    The output in the 'dist' folder will contain an index.html
+    with a script tag pointing to the bundled and hashed JavaScript file.
+  -->
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>
