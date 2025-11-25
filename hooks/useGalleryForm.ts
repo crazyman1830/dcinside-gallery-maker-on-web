@@ -71,17 +71,21 @@ export const useGalleryForm = (initialState?: Partial<GalleryFormSettings>) => {
     const handleWorldviewChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
         const newWorldview = e.target.value;
         setSelectedWorldview(newWorldview);
-        if (newWorldview === CUSTOM_WORLDVIEW_VALUE) {
-            setSelectedWorldviewEra(WORLDVIEW_ERA_NOT_APPLICABLE); 
-            
-        } else if (newWorldview === "NONE") {
+        
+        // If the era was set to "Not Applicable" (empty) from a previous preset/state, reset it to default
+        // to ensure the user sees a valid era option when switching.
+        if (selectedWorldviewEra === WORLDVIEW_ERA_NOT_APPLICABLE) {
             setSelectedWorldviewEra(DEFAULT_WORLDVIEW_ERA);
+        }
+
+        if (newWorldview === CUSTOM_WORLDVIEW_VALUE) {
+            // Keep custom text field open
+        } else if (newWorldview === "NONE") {
             setCustomWorldviewText(''); 
         } else {
-            setSelectedWorldviewEra(WORLDVIEW_ERA_NOT_APPLICABLE); 
             setCustomWorldviewText(''); 
         }
-    }, []);
+    }, [selectedWorldviewEra]);
 
     const handleManualAgeGroupChange = useCallback((ageGroupValue: string) => {
         setManualSelectedAgeGroups(prev => {
@@ -152,7 +156,8 @@ export const useGalleryForm = (initialState?: Partial<GalleryFormSettings>) => {
         setDiscussionContext(settings.discussionContext);
         setSelectedWorldview(settings.selectedWorldview);
         setCustomWorldviewText(settings.customWorldviewText);
-        setSelectedWorldviewEra(settings.selectedWorldviewEra);
+        // If preset has no era (old preset format), default to CONTEMPORARY
+        setSelectedWorldviewEra(settings.selectedWorldviewEra || DEFAULT_WORLDVIEW_ERA);
         setSelectedToxicityLevel(settings.selectedToxicityLevel);
         setSelectedAnonymousNickRatio(settings.selectedAnonymousNickRatio);
         setUserSpecies(settings.userSpecies);

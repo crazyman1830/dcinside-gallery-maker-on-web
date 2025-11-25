@@ -97,14 +97,12 @@ export const GalleryCreationForm: React.FC<GalleryCreationFormProps> = ({ isLoad
         
         setFormError('');
 
-        const isCustomOrFantasy = form.selectedWorldview === 'CUSTOM' || form.selectedWorldview === 'MURIM' || form.selectedWorldview === 'FANTASY';
-
         onSubmit({
             topic: form.topic,
             discussionContext: form.discussionContext,
             worldviewValue: form.selectedWorldview,
             customWorldviewText: form.selectedWorldview === 'CUSTOM' ? form.customWorldviewText : undefined,
-            worldviewEraValue: isCustomOrFantasy ? '' : form.selectedWorldviewEra,
+            worldviewEraValue: form.selectedWorldviewEra, // Pass Era for all worldviews
             toxicityLevelValue: form.selectedToxicityLevel,
             anonymousNickRatioValue: form.selectedAnonymousNickRatio,
             userSpecies: form.userSpecies,

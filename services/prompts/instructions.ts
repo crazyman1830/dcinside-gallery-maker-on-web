@@ -18,81 +18,75 @@ export const generateWorldviewSpecificInstructions = (
     customWorldviewText: string | undefined,
     worldviewEraValue: string
 ) => {
+    // 1. Resolve Worldview Label & Description
     const selectedWorldview = WORLDVIEW_OPTIONS.find(wv => wv.value === worldviewValue);
-    let worldviewSpecificInstructions = "";
-    let eraLabelForTitlePrompt = "";
-    let modernTechBan = false;
     const worldviewLabelKoreanPart = selectedWorldview ? selectedWorldview.label.split(" (")[0] : worldviewValue;
-
-    if (selectedWorldview && selectedWorldview.value === CUSTOM_WORLDVIEW_VALUE) {
-        worldviewSpecificInstructions = `
-**Worldview: Custom - "${worldviewLabelKoreanPart}"**
-User Description: "${customWorldviewText || 'Generic unique world.'}"
-**DIRECTIVE:** Completely adopt this custom world's logic, tech level, and slang.
-`;
-        eraLabelForTitlePrompt = "";
-        modernTechBan = false;
-    } else if (selectedWorldview && selectedWorldview.value === "MURIM") {
-        worldviewSpecificInstructions = `
-**Worldview: Murim (Martial Arts)**
-- **Era:** Pre-modern Ancient East Asia.
-- **Strict Constraint:** NO modern technology (phones, cars, internet terms).
-- **Translation Layer:** Characters speak in archaic martial arts tone (Haoche, etc.), but you present it as a web forum format.
-- **Content:** Images/Videos must be described as drawings or visual memories, not digital files.
-`;
-        eraLabelForTitlePrompt = "";
-        modernTechBan = true;
-    } else if (selectedWorldview && selectedWorldview.value === "FANTASY") {
-        worldviewSpecificInstructions = `
-**Worldview: Western Fantasy**
-- **Era:** Medieval High Fantasy.
-- **Strict Constraint:** NO electricity or digital tech. Magic crystals/scrolls replace screens.
-- **Content:** Images must be described as paintings, scrying orb visions, or sketches.
-`;
-        eraLabelForTitlePrompt = "";
-        modernTechBan = true;
+    
+    let worldviewDesc = "";
+    if (worldviewValue === CUSTOM_WORLDVIEW_VALUE) {
+        worldviewDesc = `**Core Worldview:** Custom\nDetails: "${customWorldviewText || 'Unique world'}"`;
+    } else if (worldviewValue === "MURIM") {
+        worldviewDesc = `**Core Worldview:** Murim (Martial Arts)\nContext: Jianghu, Sects, Qi, Martial Arts. Characters traditionally use archaic tone (Haoche) but should adapt to the selected Era.`;
+    } else if (worldviewValue === "FANTASY") {
+        worldviewDesc = `**Core Worldview:** Western Fantasy\nContext: Magic, Dungeons, Non-human races.`;
     } else {
-        const currentEraValue = worldviewEraValue;
-        const selectedEraOption = WORLDVIEW_ERA_OPTIONS.find(era => era.value === currentEraValue) || WORLDVIEW_ERA_OPTIONS.find(era => era.value === DEFAULT_WORLDVIEW_ERA)!;
-        eraLabelForTitlePrompt = selectedEraOption.label.split(" (")[0];
-
-        worldviewSpecificInstructions = `**Worldview: Earth (${selectedEraOption.label})**\n`;
-
-        switch (currentEraValue) {
-            case "PREHISTORIC": 
-                worldviewSpecificInstructions += `- **Theme:** Stone age survival. Speak simply. No metal/tech.`; 
-                modernTechBan = true;
-                break;
-            case "ANCIENT": 
-                worldviewSpecificInstructions += `- **Theme:** Ancient civilization (Rome/Egypt). No engines.`; 
-                modernTechBan = true;
-                break;
-            case "MEDIEVAL": 
-                worldviewSpecificInstructions += `- **Theme:** Feudalism. No modern tech.`; 
-                modernTechBan = true;
-                break;
-            case "EARLY_MODERN": 
-                worldviewSpecificInstructions += `- **Theme:** Steam/Industrial revolution. Early industry.`; 
-                modernTechBan = true;
-                break;
-            case "CONTEMPORARY": 
-                worldviewSpecificInstructions += `- **Theme:** 21st Century Korea. Hyper-realistic modern slang allowed.`; 
-                modernTechBan = false;
-                break;
-            case "NEAR_FUTURE": 
-                worldviewSpecificInstructions += `- **Theme:** Cyberpunk-lite. High tech, low life.`; 
-                modernTechBan = false;
-                break;
-            case "FAR_FUTURE": 
-                worldviewSpecificInstructions += `- **Theme:** Space/Galactic.`; 
-                modernTechBan = false;
-                break;
-            default: 
-                worldviewSpecificInstructions += `- **Theme:** Modern day.`; 
-                modernTechBan = false;
-                break;
-        }
+        worldviewDesc = `**Core Worldview:** Earth (Standard Reality)`;
     }
+
+    // 2. Resolve Era Description & Tech Constraints
+    const currentEraValue = worldviewEraValue || DEFAULT_WORLDVIEW_ERA;
+    const selectedEra = WORLDVIEW_ERA_OPTIONS.find(era => era.value === currentEraValue) || WORLDVIEW_ERA_OPTIONS.find(era => era.value === DEFAULT_WORLDVIEW_ERA)!;
+    const eraLabelForTitlePrompt = selectedEra.label.split(" (")[0];
+
+    let eraDesc = "";
+    let modernTechBan = false;
+
+    switch (currentEraValue) {
+        case "PREHISTORIC":
+            eraDesc = "Stone Age. No metal, primitive survival. Speak simply.";
+            modernTechBan = true;
+            break;
+        case "ANCIENT":
+            eraDesc = "Ancient Civilization (Rome/Egypt/Three Kingdoms). No engines/electricity.";
+            modernTechBan = true;
+            break;
+        case "MEDIEVAL":
+            eraDesc = "Medieval/Feudal. Swords, Castles. No electricity.";
+            modernTechBan = true;
+            break;
+        case "EARLY_MODERN":
+            eraDesc = "Industrial Revolution/Steam. Early tech (steam engines, printing press).";
+            modernTechBan = true;
+            break;
+        case "CONTEMPORARY":
+            eraDesc = "Modern Day (21st Century). Internet, Smartphones, Social Media present. Hyper-realistic modern slang allowed.";
+            modernTechBan = false;
+            break;
+        case "NEAR_FUTURE":
+            eraDesc = "Near Future (Cyberpunk). High tech, prosthetics, AI, Dystopian vibes.";
+            modernTechBan = false;
+            break;
+        case "FAR_FUTURE":
+            eraDesc = "Far Future (Space Age). Galactic travel, energy weapons, alien contact.";
+            modernTechBan = false;
+            break;
+        default:
+             eraDesc = "Modern Day.";
+             modernTechBan = false;
+    }
+
+    // 3. Combine Instructions
+    const worldviewSpecificInstructions = `
+**SETTING CONFIGURATION**
+- ${worldviewDesc}
+- **Time Period:** ${eraDesc}
+- **Fusion Directive:** Blend the Core Worldview with the Time Period. 
+  - Example 1: Murim + Cyberpunk = Neo-Murim with laser swords and Qi-chips.
+  - Example 2: Fantasy + Modern = Urban Fantasy (Elves in suits).
+  - Example 3: Earth + Ancient = Historical Drama.
+- **Tech Level:** ${modernTechBan ? "Strictly NO modern technology (Phones, Internet, Cars)." : "Modern/Future technology allowed."}
+`;
+
     return { worldviewSpecificInstructions, eraLabelForTitlePrompt, selectedWorldview, worldviewLabelKoreanPart, modernTechBan };
 };
 
@@ -100,7 +94,7 @@ export const generateToxicitySpecificInstructions = (toxicityLevelValue: string)
     const selectedToxicity = TOXICITY_LEVEL_OPTIONS.find(tl => tl.value === toxicityLevelValue) || TOXICITY_LEVEL_OPTIONS.find(tl => tl.value === DEFAULT_TOXICITY_LEVEL)!;
     let toxicitySpecificInstructions = "";
 
-    // Gemini 3 prefers text instructions over temperature for style control.
+    // Gemini 3 optimization: Removed variable temperature suggestions. Focused on direct instructions.
     switch (selectedToxicity.value) {
         case "MILD":
             toxicitySpecificInstructions = `

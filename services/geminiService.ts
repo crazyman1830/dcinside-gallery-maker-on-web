@@ -256,10 +256,7 @@ export const generateWorldviewFeedback = async (
         const response: GenerateContentResponse = await ai.models.generateContent({
             model: modelName,
             contents: prompt,
-            // Keeping mild randomness for creative feedback, though default is generally fine.
-            config: {
-                temperature: 1.0, 
-            },
+            // Removed temperature setting to rely on model default (Gemini 3 optimal: 1.0)
         });
         return response.text || "피드백을 생성할 수 없습니다.";
     } catch (error) {

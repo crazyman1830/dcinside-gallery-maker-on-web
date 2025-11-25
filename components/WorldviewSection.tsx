@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { InfoTooltip } from './InfoTooltip';
 import { GalleryFormValidationErrors } from '../hooks/useGalleryForm';
@@ -30,9 +31,6 @@ export const WorldviewSection: React.FC<WorldviewSectionProps> = ({
   worldviewEraOptions,
   errors
 }) => {
-  const isCustomOrFantasy = selectedWorldview === 'CUSTOM' || selectedWorldview === 'MURIM' || selectedWorldview === 'FANTASY';
-  const isEraSelectionDisabled = isCustomOrFantasy;
-
   const inputClass = "w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200 text-slate-700 placeholder-slate-400 outline-none";
   const labelClass = "block text-sm font-bold text-slate-700 mb-2";
 
@@ -80,8 +78,7 @@ export const WorldviewSection: React.FC<WorldviewSectionProps> = ({
             id="worldviewEra"
             value={selectedWorldviewEra}
             onChange={(e) => onWorldviewEraChange(e.target.value)}
-            disabled={isEraSelectionDisabled}
-            className={`${inputClass} appearance-none ${isEraSelectionDisabled ? 'opacity-60 bg-slate-100 cursor-not-allowed text-slate-400' : 'cursor-pointer'}`}
+            className={`${inputClass} appearance-none cursor-pointer`}
             >
             {worldviewEraOptions.map(era => (<option key={era.value} value={era.value}>{era.label}</option>))}
             </select>
@@ -90,16 +87,10 @@ export const WorldviewSection: React.FC<WorldviewSectionProps> = ({
             </div>
         </div>
         
-        {isEraSelectionDisabled ? (
-          <p className="text-xs text-slate-400 mt-2 ml-1">
-             <i className="fas fa-lock mr-1"></i>
-            {selectedWorldview === 'CUSTOM' ? "직접 입력 세계관은 내용에 따라 시간대가 결정됩니다." : "선택한 세계관은 고유한 시간대를 따릅니다."}
-          </p>
-        ) : (
-             selectedWorldview === "NONE" && (
-                 <p className="text-xs text-slate-400 mt-2 ml-1"><i className="fas fa-info-circle mr-1"></i>지구(기본) 세계관에서만 적용됩니다.</p>
-             )
-        )}
+        <p className="text-xs text-slate-400 mt-2 ml-1">
+             <i className="fas fa-info-circle mr-1"></i>
+             선택한 세계관과 시간대를 조합하여 독창적인 설정을 만들 수 있습니다. (예: 현대 무협, 중세 사이버펑크 등)
+        </p>
       </div>
     </div>
   );
