@@ -64,19 +64,17 @@ Structure:
     }
 
     const prompt = `
-**TASK: Generate the initial page of the "${ctx.topic}" Gallery.**
-
-**1. CONTEXT**
+**1. CONTEXT & SETTINGS**
+- **Topic:** "${ctx.topic}"
 - **Burning Issue:** "${ctx.discussionContext || 'Daily chatter'}"
+- **Worldview:** ${worldviewLabelKoreanPart} / ${eraLabelForTitlePrompt}
 ${googleSearchInstruction}
 
-**2. REQUIREMENTS**
-- Generate EXACTLY ${NUMBER_OF_POSTS} posts.
+**2. REQUIREMENTS & GUIDELINES**
+- **Requirements:** Generate EXACTLY ${NUMBER_OF_POSTS} posts.
 - **Post 1 (Best Post):** High quality, funny or controversial. ${MIN_COMMENTS_PER_BEST_POST}-${MAX_COMMENTS_PER_BEST_POST} comments.
 - **Posts 2-${NUMBER_OF_POSTS}:** Standard posts. ${MIN_COMMENTS_PER_POST}-${MAX_COMMENTS_PER_POST} comments.
 - **Title Field:** "[${ctx.topic}] 갤러리 - ${worldviewLabelKoreanPart}${eraLabelForTitlePrompt ? ` (${eraLabelForTitlePrompt})` : ''} - [${toxicityNameForTitle}]"
-
-**3. CONTENT GUIDELINES**
 - **Replies:** Use "@Nickname " to create conversation chains.
 - **Media:** Randomly include (사진: ...), (동영상: ...) in posts. MUST match the Era/Worldview.
 - **Reactions:** Use (콘: ...) in comments for visual reactions.
@@ -84,6 +82,10 @@ ${googleSearchInstruction}
 ${explicitTechBanInstruction}
 
 ${jsonFormattingInstruction}
+
+**3. TASK (EXECUTE NOW)**
+Generate the initial page of the "${ctx.topic}" Gallery based on the above settings. 
+Ensure the output is verbose, authentic, and strictly adheres to the requested format.
   `;
 
     return { prompt };

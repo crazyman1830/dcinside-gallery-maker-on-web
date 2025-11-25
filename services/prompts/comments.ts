@@ -12,21 +12,22 @@ export const buildCommentGenerationPrompt = (
     const numberOfCommentsToGenerate = Math.max(minComments, Math.floor(Math.random() * (maxComments - minComments + 1)) + minComments);
 
     const prompt = `
-**TASK: Generate ${numberOfCommentsToGenerate} comments for a user post.**
-
-**Target Post:**
+**1. CONTEXT: TARGET POST**
 - Title: "${userPost.title}"
 - Author: "${userPost.author}"
 - Content: "${userPost.content}"
 
-**DIRECTIVES:**
+**2. DIRECTIVES**
 - React based on the defined Persona and Worldview.
 - **Acting:** 'Fixed Nick' authors must match their name's vibe.
 - **Interaction:** Use "@Nickname " to reply to other comments in this batch.
 - **Visuals:** Use (콘: ...) for emoji/sticker reactions.
 
-**OUTPUT (STRICT JSON):**
+**3. OUTPUT SPECIFICATION (STRICT JSON)**
 - JSON Array of objects: [{ "author": "String", "text": "String" }]
+
+**4. TASK (EXECUTE NOW)**
+Generate ${numberOfCommentsToGenerate} comments for the post above. Ensure the tone is chatty and authentic to the community settings.
     `;
 
     return { prompt, numberOfCommentsToGenerate };
@@ -45,20 +46,21 @@ export const buildFollowUpCommentPrompt = (
     const contextSummary = existingComments.slice(-5).map(c => `${c.author}: ${c.text.substring(0, 50)}`).join('\n');
 
     const prompt = `
-**TASK: Continue the discussion with ${numberOfCommentsToGenerate} new comments.**
-
-**Context:**
+**1. CONTEXT**
 - Post: "${originalPost.title}"
 - Recent Comments:
 ${contextSummary}
 
-**DIRECTIVES:**
+**2. DIRECTIVES**
 - Continue the flow naturally.
 - Maintain Toxicity and Worldview settings.
 - Create drama or consensus.
 
-**OUTPUT (STRICT JSON):**
+**3. OUTPUT SPECIFICATION (STRICT JSON)**
 - JSON Array of objects: [{ "author": "String", "text": "String" }]
+
+**4. TASK (EXECUTE NOW)**
+Continue the discussion with ${numberOfCommentsToGenerate} new comments.
     `;
 
     return { prompt, numberOfCommentsToGenerate };

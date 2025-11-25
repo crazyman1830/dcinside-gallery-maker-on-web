@@ -7,18 +7,20 @@ export const buildPostEvaluationPrompt = (
     galleryContext: PromptContext
 ) => {
     const prompt = `
-**TASK: Evaluate User Post for Engagement Metrics.**
-
-**Post:**
+**1. INPUT DATA**
 Title: ${userPost.title}
 Content: ${userPost.content}
 
-**LOGIC:**
+**2. EVALUATION LOGIC**
 1. Worldview fit? -> High Recommendations.
 2. Character break? -> High Non-Recommendations.
 3. Clickbait? -> High Views.
 
+**3. OUTPUT SPECIFICATION**
 Output valid JSON matching the Schema.
+
+**4. TASK (EXECUTE NOW)**
+Evaluate the User Post for Engagement Metrics based on the logic above.
     `;
 
     return { prompt };
@@ -29,10 +31,12 @@ export const buildWorldviewFeedbackPrompt = (
     galleryData: GalleryData
 ) => {
     const prompt = `
-Role: Creative Writing Coach.
-Input: Worldview "${customWorldviewText}", Sample Content "${galleryData.posts[0]?.title}"
+**1. INPUT**
+- Worldview Setting: "${customWorldviewText}"
+- Sample Content (Title): "${galleryData.posts[0]?.title}"
 
-Provide feedback in Korean (Markdown):
+**2. TASK (EXECUTE NOW)**
+Act as a Creative Writing Coach. Provide feedback in Korean (Markdown) on:
 1. Strengths
 2. Weaknesses
 3. Expansion Ideas
