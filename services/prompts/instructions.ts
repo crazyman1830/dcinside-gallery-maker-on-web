@@ -21,64 +21,33 @@ export const generateWorldviewSpecificInstructions = (
     const selectedWorldview = WORLDVIEW_OPTIONS.find(wv => wv.value === worldviewValue);
     let worldviewSpecificInstructions = "";
     let eraLabelForTitlePrompt = "";
-    let modernTechBan = false; // Flag to indicate if modern tech should be explicitly banned in the user prompt
+    let modernTechBan = false;
     const worldviewLabelKoreanPart = selectedWorldview ? selectedWorldview.label.split(" (")[0] : worldviewValue;
 
     if (selectedWorldview && selectedWorldview.value === CUSTOM_WORLDVIEW_VALUE) {
         worldviewSpecificInstructions = `
 **Worldview: Custom - "${worldviewLabelKoreanPart}"**
-User Description: "${customWorldviewText || 'No custom description provided. Assume a generic unique world.'}"
-
-**INSTRUCTION:** Immerse yourself completely in this custom world.
-- Deduce the technological level, social hierarchy, and slang from the user's description.
-- If the description implies magic, speak like a mage/commoner of that world. If sci-fi, use techno-babble.
-- The 'worldviewEraValue' is effectively overridden by this custom description.
+User Description: "${customWorldviewText || 'Generic unique world.'}"
+**DIRECTIVE:** Completely adopt this custom world's logic, tech level, and slang.
 `;
         eraLabelForTitlePrompt = "";
-        modernTechBan = false; // Depends on user input, so we can't force ban
+        modernTechBan = false;
     } else if (selectedWorldview && selectedWorldview.value === "MURIM") {
         worldviewSpecificInstructions = `
-**Worldview: Murim (Martial Arts World)**
-- **TIME PERIOD:** Ancient/Medieval East Asian Era (Pre-Industrial). 100% PRE-MODERN.
-- **PHYSICAL REALITY (STRICT):** 
-    - **Architecture:** Wooden pagodas, tiled roofs, dirt roads, inns (Jumak), mountain sects.
-    - **Transport:** Horses, carriages, walking, Qinggong (flying/leaping).
-    - **Items:** Swords, spears, brushes, ink, paper, tea sets, jade, alcohol jars, silver taels, torches, candles.
-- **ABSOLUTE PROHIBITION (VIOLATION = FAILURE):**
-    - **NO MODERN TECH:** No smartphones, computers, internet, cars, guns, plastic, concrete, sneakers, glasses, watches.
-    - **NO MODERN CONCEPTS:** No "uploading", "streaming", "files", "app", "camera", "selfie", "video call".
-- **CONCEPTUAL TRANSLATION (How to handle the "Gallery" format):** 
-    - The characters are living in the ancient world. They are speaking, shouting, writing on scrolls, or using telepathy (Jeoneum).
-    - **YOU** (The AI) are translating their interactions into the *visual format* of a modern forum for the user's amusement.
-    - **CRITICAL:** When describing the *content* of a post (especially "Photo" or "Video" descriptions), describe **ONLY** what exists in that era.
-        - **BAD:** "(Photo: A selfie of me holding a sword)" -> INVALID (No phones).
-        - **GOOD:** "(Photo: A rough ink drawing of a sword)" or "(Photo: A view of the Mount Hua sect entrance)".
-        - **BAD:** "(Video: Dashcam footage of a horse accident)" -> INVALID.
-        - **GOOD:** "(Video: A visual memory of a horse crashing into a cart)".
-- **Atmosphere:** A chaotic blend of ancient martial arts honor codes and modern internet cynicism.
-- **Speech Style:** Mix archaic Korean martial arts terms (본좌, 소협, 주화입마, 하오체, 비급) with modern internet slang.
+**Worldview: Murim (Martial Arts)**
+- **Era:** Pre-modern Ancient East Asia.
+- **Strict Constraint:** NO modern technology (phones, cars, internet terms).
+- **Translation Layer:** Characters speak in archaic martial arts tone (Haoche, etc.), but you present it as a web forum format.
+- **Content:** Images/Videos must be described as drawings or visual memories, not digital files.
 `;
         eraLabelForTitlePrompt = "";
         modernTechBan = true;
     } else if (selectedWorldview && selectedWorldview.value === "FANTASY") {
         worldviewSpecificInstructions = `
 **Worldview: Western Fantasy**
-- **TIME PERIOD:** Medieval High Fantasy Era. 100% PRE-MODERN.
-- **PHYSICAL REALITY (STRICT):**
-    - **Architecture:** Castles, stone villages, dungeons, taverns, guilds, wizard towers.
-    - **Transport:** Horses, carriages, teleportation circles, airships (steampunk/magic only).
-    - **Items:** Swords, staffs, potions, scrolls, armor, gold coins, crystals.
-- **ABSOLUTE PROHIBITION (VIOLATION = FAILURE):**
-    - **NO MODERN TECH:** No electricity, internet, cars, phones, guns, plastic, modern fashion.
-    - **NO MODERN CONCEPTS:** No "downloading", "texting", "social media", "screen".
-- **CONCEPTUAL TRANSLATION:**
-    - The characters are interacting via magic crystals, bulletin boards, or psychic links.
-    - **YOU** convert these interactions into a forum layout.
-    - **CRITICAL:** Content descriptions must match the era.
-        - **BAD:** "(Photo: My new gaming PC setup)" -> INVALID.
-        - **GOOD:** "(Photo: My new alchemical lab setup)".
-- **Atmosphere:** A world of Magic, Monsters, and Adventurers, but treated like a mundane job market or hobby.
-- **Speech Style:** Fantasy terminology used in casual slang.
+- **Era:** Medieval High Fantasy.
+- **Strict Constraint:** NO electricity or digital tech. Magic crystals/scrolls replace screens.
+- **Content:** Images must be described as paintings, scrying orb visions, or sketches.
 `;
         eraLabelForTitlePrompt = "";
         modernTechBan = true;
@@ -91,35 +60,35 @@ User Description: "${customWorldviewText || 'No custom description provided. Ass
 
         switch (currentEraValue) {
             case "PREHISTORIC": 
-                worldviewSpecificInstructions += `- **Theme:** Survival, hunting, fire. **Technology:** Stone tools. No metal, no electricity. Speak simply.`; 
+                worldviewSpecificInstructions += `- **Theme:** Stone age survival. Speak simply. No metal/tech.`; 
                 modernTechBan = true;
                 break;
             case "ANCIENT": 
-                worldviewSpecificInstructions += `- **Theme:** Rome/Greece/Egypt. Slaves vs Masters, Gods. No electricity or engines.`; 
+                worldviewSpecificInstructions += `- **Theme:** Ancient civilization (Rome/Egypt). No engines.`; 
                 modernTechBan = true;
                 break;
             case "MEDIEVAL": 
-                worldviewSpecificInstructions += `- **Theme:** Feudalism, Plague, Kings. No modern tech.`; 
+                worldviewSpecificInstructions += `- **Theme:** Feudalism. No modern tech.`; 
                 modernTechBan = true;
                 break;
             case "EARLY_MODERN": 
-                worldviewSpecificInstructions += `- **Theme:** Revolution, Discovery, Steam. Early industry. No digital tech.`; 
+                worldviewSpecificInstructions += `- **Theme:** Steam/Industrial revolution. Early industry.`; 
                 modernTechBan = true;
                 break;
             case "CONTEMPORARY": 
-                worldviewSpecificInstructions += `- **Theme:** Modern 21st Century Korea. Smartphones, K-Pop, Politics. **Hyper-realism required.**`; 
+                worldviewSpecificInstructions += `- **Theme:** 21st Century Korea. Hyper-realistic modern slang allowed.`; 
                 modernTechBan = false;
                 break;
             case "NEAR_FUTURE": 
-                worldviewSpecificInstructions += `- **Theme:** Cyberpunk-lite, AI, Climate. High tech, low life.`; 
+                worldviewSpecificInstructions += `- **Theme:** Cyberpunk-lite. High tech, low life.`; 
                 modernTechBan = false;
                 break;
             case "FAR_FUTURE": 
-                worldviewSpecificInstructions += `- **Theme:** Space travel, Aliens, Post-human. Galactic scale.`; 
+                worldviewSpecificInstructions += `- **Theme:** Space/Galactic.`; 
                 modernTechBan = false;
                 break;
             default: 
-                worldviewSpecificInstructions += `- **Theme:** Modern day default.`; 
+                worldviewSpecificInstructions += `- **Theme:** Modern day.`; 
                 modernTechBan = false;
                 break;
         }
@@ -130,41 +99,36 @@ User Description: "${customWorldviewText || 'No custom description provided. Ass
 export const generateToxicitySpecificInstructions = (toxicityLevelValue: string) => {
     const selectedToxicity = TOXICITY_LEVEL_OPTIONS.find(tl => tl.value === toxicityLevelValue) || TOXICITY_LEVEL_OPTIONS.find(tl => tl.value === DEFAULT_TOXICITY_LEVEL)!;
     let toxicitySpecificInstructions = "";
-    let temperature = 0.95;
 
+    // Gemini 3 prefers text instructions over temperature for style control.
     switch (selectedToxicity.value) {
         case "MILD":
-            temperature = 0.85;
             toxicitySpecificInstructions = `
-**Toxicity Level: MILD (순한맛)**
-- **Tone:** Polite, clean, "Cleanbot" style.
-- **Banned:** Profanity, aggressive insults, sexual harassment.
-- **Allowed:** Gentle sarcasm, puns, wholesome support.
-- **Vibe:** A strictly moderated hobbyist forum.
+**Toxicity: MILD (순한맛)**
+- **Tone:** Polite, wholesome, "Cleanbot" active.
+- **Rule:** NO profanity, aggressive insults, or sexual harassment.
+- **Style:** Friendly hobbyist community.
 `;
             break;
         case "SPICY":
-            temperature = 1.0;
             toxicitySpecificInstructions = `
-**Toxicity Level: SPICY (매운맛)**
-- **Tone:** Aggressive, raw, unfiltered, "DCInside Deep Gallery" style.
-- **Required:** Creative insults, satire, heavy slang, provocative phrasing.
-- **Note:** Do not just use swear words randomly. Use them to emphasize frustration, mockery, or intense emotion authentic to the community.
-- **Vibe:** A lawless wasteland where strength (or wit) rules.
+**Toxicity: SPICY (매운맛)**
+- **Tone:** Aggressive, raw, unfiltered, cynical.
+- **Rule:** Use creative insults, satire, and heavy slang authentic to "DC Inside".
+- **Style:** A lawless wasteland. Be provocative.
 `;
             break;
         case "MEDIUM":
         default:
-            temperature = 0.95;
             toxicitySpecificInstructions = `
-**Toxicity Level: MEDIUM (보통맛)**
-- **Tone:** Casual, blunt, standard internet community.
-- **Allowed:** Mild swearing (ㅅㅂ, 미친), slang, friendly teasing.
-- **Vibe:** Typical noisy internet forum.
+**Toxicity: MEDIUM (보통맛)**
+- **Tone:** Casual, blunt, standard internet banter.
+- **Rule:** Mild swearing allowed (e.g., shit, damn) but no hate speech.
+- **Style:** Typical noisy forum.
 `;
             break;
     }
-    return { toxicitySpecificInstructions, temperature, selectedToxicity };
+    return { toxicitySpecificInstructions, selectedToxicity };
 };
 
 export const generateUserProfileInstructions = (
@@ -173,18 +137,18 @@ export const generateUserProfileInstructions = (
     genderRatioValue: string,
     ageRangeValue: string | string[]
 ) => {
-    let instructions = `**User Demographics & Persona (General Population):**\n`;
+    let instructions = `**Demographics & Persona:**\n`;
     
-    if (userSpecies) instructions += `- **Species:** ${userSpecies}. (Reflect biological/cultural traits in text)\n`;
-    if (userAffiliation) instructions += `- **Affiliation:** ${userAffiliation}. (Bias towards this group)\n`;
+    if (userSpecies) instructions += `- **Species:** ${userSpecies}\n`;
+    if (userAffiliation) instructions += `- **Affiliation:** ${userAffiliation}\n`;
 
     if (genderRatioValue !== GENDER_RATIO_AUTO_ID) {
-        instructions += `- **Gender Balance:** ${genderRatioValue}% Male. Adjust 'Hyung/Oppa/Unni/Noona' terminology accordingly.\n`;
+        instructions += `- **Gender:** ${genderRatioValue}% Male context.\n`;
     }
     
     if (Array.isArray(ageRangeValue) && ageRangeValue.length > 0) {
         const labels = AGE_RANGE_OPTIONS.filter(o => ageRangeValue.includes(o.value)).map(o => o.label).join(', ');
-        instructions += `- **Age Group:** ${labels}. Use slang appropriate for this generation.\n`;
+        instructions += `- **Age Group:** ${labels}. Use appropriate generational slang.\n`;
     }
 
     return instructions;
@@ -195,14 +159,9 @@ export const getNicknameInstructionDetails = (anonymousNickRatioValue: string) =
     
     return `
 **Nickname Protocol:**
-- **Ratio:** ${ratioOption.label}.
-- **Fixed Nicks (고정닉):** Creative, thematic names in **KOREAN (Hangul)**.
-  - **CONCEPT & PERSONA (CRITICAL):** The nickname MUST dictate the speech style and personality.
-  - *Example:* '젠틀맨' -> Speaks extremely politely, perhaps sarcastically so.
-  - *Example:* '광전사' -> Uses short sentences, aggressive tone, exclamation marks.
-  - *Example:* '팩트폭격기' -> Obsessed with facts, dry tone, annoying.
-  - *Example:* '냥냥이' -> Ends sentences with '~nyang' or uses cute emojis.
-- **Fluid Nicks (유동닉):** MUST use format "ㅇㅇ(IP)". Generally cynical, raw, unfiltered, and follow the 'hive mind' of the gallery.
+- **Distribution:** ${ratioOption.label}
+- **Fixed Nicks (고정닉):** The nickname MUST define the persona (e.g., 'AngryWarrior' -> writes angrily).
+- **Fluid Nicks (유동닉):** Use format "ㅇㅇ(IP)". Tone is generally cynical/hive-mind.
 `;
 };
 
@@ -216,22 +175,21 @@ export const generatePlayerStatusInstructions = (userProfile?: UserProfile) => {
 
     let statusDescription = "";
     if (reputation <= 20) {
-        statusDescription = "PUBLIC ENEMY / VILLAIN. The community HATES this user. Replies should be hostile, insulting, or mocking. Downvotes are common.";
+        statusDescription = "VILLAIN (Hated). Replies should be hostile/mocking.";
     } else if (reputation <= 40) {
-        statusDescription = "UNPOPULAR. Users are dismissive or annoyed by this user. They treat them as a nuisance.";
+        statusDescription = "UNPOPULAR (Annoying). Users are dismissive.";
     } else if (reputation <= 60) {
-        statusDescription = "NEUTRAL / INVISIBLE. Users treat this user normally. Standard engagement.";
+        statusDescription = "NEUTRAL. Standard engagement.";
     } else if (reputation <= 80) {
-        statusDescription = "POPULAR / LIKED. Users are friendly and supportive. They generally agree or engage positively.";
+        statusDescription = "POPULAR. Users are friendly/agreeable.";
     } else {
-        statusDescription = "IDOL / GALLERY LEGEND. Users worship or highly respect this user. They seek validation from them and defend them.";
+        statusDescription = "LEGEND/IDOL. Users worship and defend this user.";
     }
 
     return `
-**CURRENT PLAYER STATUS:**
-The active user interacting with the gallery is: **"${fullNickname}"**
-- **Reputation Score:** ${reputation}/100.
-- **Community Stance:** ${statusDescription}
-- **INSTRUCTION:** When generating comments or reactions to THIS specific user, strictly follow this reputation setting.
+**Current User Context:**
+- **User:** "${fullNickname}"
+- **Status:** ${statusDescription}
+- **Action:** React to this specific user according to their status.
 `;
 };

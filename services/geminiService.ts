@@ -99,10 +99,10 @@ export const generateGalleryStreamFromGemini = async (
   const systemInstruction = buildSystemInstruction(topic, galleryContext);
 
   // Use the context object for the builder function
-  const { prompt, temperature } = buildGalleryGenerationPrompt(galleryContext);
+  const { prompt } = buildGalleryGenerationPrompt(galleryContext);
 
   const config: any = {
-    temperature: temperature,
+    // Removed explicit temperature to allow model default (1.0)
     systemInstruction: systemInstruction,
   };
 
@@ -145,7 +145,7 @@ export const generateCommentsForUserPost = async (
     const ai = createAiInstance();
     const systemInstruction = buildSystemInstruction(galleryContext.topic, galleryContext);
     
-    const { prompt, temperature, numberOfCommentsToGenerate } = buildCommentGenerationPrompt(
+    const { prompt, numberOfCommentsToGenerate } = buildCommentGenerationPrompt(
         userPost, galleryContext, minComments, maxComments
     );
 
@@ -155,7 +155,6 @@ export const generateCommentsForUserPost = async (
             contents: prompt,
             config: { 
                 responseMimeType: "application/json", 
-                temperature: temperature,
                 systemInstruction: systemInstruction 
             },
         });
@@ -183,7 +182,7 @@ export const generateFollowUpCommentsForPost = async (
     const ai = createAiInstance();
     const systemInstruction = buildSystemInstruction(galleryContext.topic, galleryContext);
 
-    const { prompt, temperature, numberOfCommentsToGenerate } = buildFollowUpCommentPrompt(
+    const { prompt, numberOfCommentsToGenerate } = buildFollowUpCommentPrompt(
         originalPost, existingComments, galleryContext, minCommentsToGenerate, maxCommentsToGenerate
     );
 
@@ -193,7 +192,6 @@ export const generateFollowUpCommentsForPost = async (
             contents: prompt,
             config: { 
                 responseMimeType: "application/json",
-                temperature: temperature,
                 systemInstruction: systemInstruction 
             },
         });
@@ -219,7 +217,7 @@ export const evaluateUserPostContent = async (
     const ai = createAiInstance();
     const systemInstruction = buildSystemInstruction(galleryContext.topic, galleryContext);
 
-    const { prompt, temperature } = buildPostEvaluationPrompt(userPost, galleryContext);
+    const { prompt } = buildPostEvaluationPrompt(userPost, galleryContext);
 
     try {
         const response: GenerateContentResponse = await ai.models.generateContent({
@@ -228,7 +226,6 @@ export const evaluateUserPostContent = async (
             config: { 
                 responseMimeType: "application/json", 
                 responseSchema: evaluationSchema,
-                temperature: temperature,
                 systemInstruction: systemInstruction,
             },
         });
@@ -259,8 +256,9 @@ export const generateWorldviewFeedback = async (
         const response: GenerateContentResponse = await ai.models.generateContent({
             model: modelName,
             contents: prompt,
+            // Keeping mild randomness for creative feedback, though default is generally fine.
             config: {
-                temperature: 0.7,
+                temperature: 1.0, 
             },
         });
         return response.text || "피드백을 생성할 수 없습니다.";
