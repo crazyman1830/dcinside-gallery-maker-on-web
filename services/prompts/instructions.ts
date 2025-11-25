@@ -39,40 +39,40 @@ export const generateWorldviewSpecificInstructions = (
     const eraLabelForTitlePrompt = selectedEra.label.split(" (")[0];
 
     let eraDesc = "";
-    let modernTechBan = false;
+    let eraConstraints = "";
 
     switch (currentEraValue) {
         case "PREHISTORIC":
-            eraDesc = "Stone Age. No metal, primitive survival. Speak simply.";
-            modernTechBan = true;
+            eraDesc = "Stone Age (Pre-Civilization). Hunter-gatherer society.";
+            eraConstraints = "STRICTLY PROHIBITED: Metal, Writing, Wheels, Farming, Architecture beyond caves/huts. REPLACEMENT: 'House'->'Cave', 'Weapon'->'Stone/Club', 'Clothing'->'Fur'.";
             break;
         case "ANCIENT":
-            eraDesc = "Ancient Civilization (Rome/Egypt/Three Kingdoms). No engines/electricity.";
-            modernTechBan = true;
+            eraDesc = "Ancient Era (Bronze/Iron Age). Early Empires.";
+            eraConstraints = "STRICTLY PROHIBITED: Gunpowder, Printing Press, Engines, Electricity, Plastic. REPLACEMENT: 'Car'->'Chariot/Horse', 'Paper'->'Scroll/Tablet'.";
             break;
         case "MEDIEVAL":
-            eraDesc = "Medieval/Feudal. Swords, Castles. No electricity.";
-            modernTechBan = true;
+            eraDesc = "Medieval Era (Feudalism). Swords and cold weapons.";
+            eraConstraints = "STRICTLY PROHIBITED: Guns/Rifles (unless primitive cannons), Steam Engines, Electricity, Plastic, Cars, Trucks, Smartphones, Internet. REPLACEMENT: 'Truck'->'Wagon/Cart', 'Car'->'Carriage', 'Phone'->'Letter/Magic Stone', 'Internet'->'Town Square'.";
             break;
         case "EARLY_MODERN":
-            eraDesc = "Industrial Revolution/Steam. Early tech (steam engines, printing press).";
-            modernTechBan = true;
+            eraDesc = "Early Modern (19th - Early 20th Century). Steam & Steel, Industrial Revolution.";
+            eraConstraints = "STRICTLY PROHIBITED: Digital Computers, Microchips, Internet, Smartphones, Nuclear Power. REPLACEMENT: 'Internet'->'Newspaper/Telegram', 'Smartphone'->'Pocket Watch/Notebook', 'Blog'->'Journal'.";
             break;
         case "CONTEMPORARY":
-            eraDesc = "Modern Day (21st Century). Internet, Smartphones, Social Media present. Hyper-realistic modern slang allowed.";
-            modernTechBan = false;
+            eraDesc = "Modern Day (21st Century). Information Age.";
+            eraConstraints = "Standard modern technology allowed.";
             break;
         case "NEAR_FUTURE":
-            eraDesc = "Near Future (Cyberpunk). High tech, prosthetics, AI, Dystopian vibes.";
-            modernTechBan = false;
+            eraDesc = "Near Future (Cyberpunk/High-Tech).";
+            eraConstraints = "Must include advanced tech (AI, cybernetics, holograms).";
             break;
         case "FAR_FUTURE":
-            eraDesc = "Far Future (Space Age). Galactic travel, energy weapons, alien contact.";
-            modernTechBan = false;
+            eraDesc = "Far Future (Space Age).";
+            eraConstraints = "Must include futuristic tech (Warp drives, Energy shields, Teleporters).";
             break;
         default:
              eraDesc = "Modern Day.";
-             modernTechBan = false;
+             eraConstraints = "";
     }
 
     // 3. Combine Instructions
@@ -84,10 +84,12 @@ export const generateWorldviewSpecificInstructions = (
   - Example 1: Murim + Cyberpunk = Neo-Murim with laser swords and Qi-chips.
   - Example 2: Fantasy + Modern = Urban Fantasy (Elves in suits).
   - Example 3: Earth + Ancient = Historical Drama.
-- **Tech Level:** ${modernTechBan ? "Strictly NO modern technology (Phones, Internet, Cars)." : "Modern/Future technology allowed."}
+- **ANACHRONISM CHECK (CRITICAL):**
+  - ${eraConstraints}
+  - **Rule:** If the user's Topic (e.g. "Truck") violates the time period (e.g. Medieval), YOU MUST ADAPT IT to an era-appropriate equivalent (e.g. "Oxcart") instead of using the modern word.
 `;
 
-    return { worldviewSpecificInstructions, eraLabelForTitlePrompt, selectedWorldview, worldviewLabelKoreanPart, modernTechBan };
+    return { worldviewSpecificInstructions, eraLabelForTitlePrompt, selectedWorldview, worldviewLabelKoreanPart, eraConstraints };
 };
 
 export const generateToxicitySpecificInstructions = (toxicityLevelValue: string) => {

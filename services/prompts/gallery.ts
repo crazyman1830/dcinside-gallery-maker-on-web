@@ -15,7 +15,7 @@ import {
 export const buildGalleryGenerationPrompt = (
     ctx: PromptContext
 ) => {
-    const { eraLabelForTitlePrompt, worldviewLabelKoreanPart, modernTechBan } = generateWorldviewSpecificInstructions(
+    const { eraLabelForTitlePrompt, worldviewLabelKoreanPart, eraConstraints } = generateWorldviewSpecificInstructions(
         ctx.worldviewValue, 
         ctx.customWorldviewText, 
         ctx.worldviewEraValue
@@ -54,12 +54,12 @@ Structure:
     }
 
     let explicitTechBanInstruction = "";
-    if (modernTechBan) {
+    if (eraConstraints) {
         explicitTechBanInstruction = `
-**ERA COMPLIANCE (STRICT)**
-- Simulated Era: PRE-MODERN.
-- **BANNED WORDS:** Phone, Camera, App, Internet, Car, Screen.
-- **ACTION:** Replace modern concepts with era-appropriate alternatives (e.g., "Drawing" instead of "Photo", "Scroll" instead of "Tablet").
+**ERA COMPLIANCE & VOCABULARY FILTER (STRICT)**
+- **Constraints:** ${eraConstraints}
+- **Action:** Scan all generated titles, content, and comments. If a term violates the constraints (e.g., using "Truck" in Medieval), REPLACE it with a context-appropriate term (e.g., "Wagon").
+- **Directive:** Do not explain the replacement in the text, just use the correct era-specific term.
         `;
     }
 
