@@ -10,7 +10,7 @@ import {
 } from './geminiService';
 import { parseGeminiResponse } from '../utils/jsonParser';
 import { getDetailedTimestamp, getCurrentTimestamp } from '../utils/common';
-import { GalleryData, Post, Comment, GeminiResponseData, GeminiPostContent, GeminiCommentContent, UserProfile } from '../types';
+import { GalleryData, Post, Comment, GeminiResponseData, GeminiPostContent, GeminiCommentContent, UserProfile, GroundingSource } from '../types';
 import {
     MIN_COMMENTS_PER_POST, MAX_COMMENTS_PER_POST,
     MIN_COMMENTS_PER_BEST_POST, MAX_COMMENTS_PER_BEST_POST,
@@ -73,11 +73,26 @@ export const createGalleryStreamed = async (
         );
 
         let responseText = '';
+        const collectedGroundingChunks: GroundingSource[] = [];
+
         for await (const chunk of stream) {
             const chunkText = chunk.text;
             if (chunkText) {
                 responseText += chunkText;
                 onChunk(chunkText);
+            }
+            
+            // Capture Google Search Grounding Metadata
+            const groundingMetadata = chunk.candidates?.[0]?.groundingMetadata;
+            if (groundingMetadata?.groundingChunks) {
+                groundingMetadata.groundingChunks.forEach((chunk: any) => {
+                    if (chunk.web) {
+                        collectedGroundingChunks.push({
+                            title: chunk.web.title,
+                            uri: chunk.web.uri
+                        });
+                    }
+                });
             }
         }
         
@@ -150,7 +165,14 @@ export const createGalleryStreamed = async (
         }
         postsData.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
-        return { galleryTitle: geminiData.galleryTitle, posts: postsData };
+        // Deduplicate sources based on URI
+        const uniqueSources = collectedGroundingChunks.filter((v, i, a) => a.findIndex(t => (t.uri === v.uri)) === i);
+
+        return { 
+            galleryTitle: geminiData.galleryTitle, 
+            posts: postsData,
+            sources: uniqueSources 
+        };
     } catch (error) {
         if (error instanceof Error && error.message === API_KEY_MISSING_ERROR_MESSAGE) {
             throw error;

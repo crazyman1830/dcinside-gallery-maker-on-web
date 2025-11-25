@@ -1,4 +1,3 @@
-
 {
   "id": "preset-example-murim",
   "name": "[예시] 무협 - 무공",
@@ -7,7 +6,7 @@
     "discussionContext": "가장 배우고 싶은 무공에 대한 논쟁",
     "selectedWorldview": "MURIM",
     "customWorldviewText": "",
-    "selectedWorldviewEra": "",
+    "selectedWorldviewEra": "ANCIENT",
     "selectedToxicityLevel": "MEDIUM",
     "selectedAnonymousNickRatio": "BALANCED",
     "userSpecies": "인간",
