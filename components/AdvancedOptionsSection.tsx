@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { GEMINI_MODEL_TEXT, GEMINI_MODEL_PRO, GEMINI_MODEL_3_PRO } from '../constants';
 
@@ -31,9 +32,9 @@ export const AdvancedOptionsSection: React.FC<AdvancedOptionsSectionProps> = ({
                 onChange={(e) => onSelectedModelChange(e.target.value)}
                 className={inputClass}
             >
-                <option value={GEMINI_MODEL_TEXT}>Gemini 2.5 Flash (빠름, 기본)</option>
-                <option value={GEMINI_MODEL_PRO}>Gemini 2.5 Pro (고성능)</option>
-                <option value={GEMINI_MODEL_3_PRO}>Gemini 3.0 Pro Preview (최신, 실험적)</option>
+                <option value={GEMINI_MODEL_TEXT}>Gemini 2.5 Flash (빠름, 가벼움)</option>
+                <option value={GEMINI_MODEL_PRO}>Gemini 2.5 Pro (안정적)</option>
+                <option value={GEMINI_MODEL_3_PRO}>Gemini 3.0 Pro Preview (최신, 강력함, 추천)</option>
             </select>
             <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-slate-500">
                 <i className="fas fa-chevron-down text-xs"></i>

@@ -83,7 +83,7 @@ export const generateGalleryStreamFromGemini = async (
     userAffiliation: string,
     genderRatioValue: string,
     ageRangeValue: string | string[],
-    modelName: string = GEMINI_MODEL_TEXT,
+    modelName: string = GEMINI_MODEL_3_PRO,
     useSearch: boolean = false,
     userProfile?: UserProfile
 ) => {
@@ -138,7 +138,7 @@ export const generateCommentsForUserPost = async (
     userPost: Pick<Post, 'title' | 'author' | 'content'>,
     galleryContext: PromptContext,
     minComments: number, maxComments: number,
-    modelName: string = GEMINI_MODEL_TEXT
+    modelName: string = GEMINI_MODEL_3_PRO
 ): Promise<GeminiCommentContent[]> => {
     const ai = createAiInstance();
     const systemInstruction = buildSystemInstruction(galleryContext.topic, galleryContext);
@@ -175,7 +175,7 @@ export const generateFollowUpCommentsForPost = async (
     existingComments: Comment[],
     galleryContext: PromptContext,
     minCommentsToGenerate: number, maxCommentsToGenerate: number,
-    modelName: string = GEMINI_MODEL_TEXT
+    modelName: string = GEMINI_MODEL_3_PRO
 ): Promise<GeminiCommentContent[]> => {
     const ai = createAiInstance();
     const systemInstruction = buildSystemInstruction(galleryContext.topic, galleryContext);
@@ -210,7 +210,7 @@ export const generateFollowUpCommentsForPost = async (
 export const evaluateUserPostContent = async (
     userPost: Pick<Post, 'title' | 'author' | 'content'>,
     galleryContext: PromptContext,
-    modelName: string = GEMINI_MODEL_TEXT
+    modelName: string = GEMINI_MODEL_3_PRO
 ): Promise<GeminiEvaluationResponse> => {
     const ai = createAiInstance();
     const systemInstruction = buildSystemInstruction(galleryContext.topic, galleryContext);
@@ -245,7 +245,7 @@ export const evaluateUserPostContent = async (
 export const generateWorldviewFeedback = async (
     customWorldviewText: string,
     galleryData: GalleryData,
-    modelName: string = GEMINI_MODEL_TEXT
+    modelName: string = GEMINI_MODEL_3_PRO
 ): Promise<string> => {
     const ai = createAiInstance();
     const { prompt } = buildWorldviewFeedbackPrompt(customWorldviewText, galleryData);

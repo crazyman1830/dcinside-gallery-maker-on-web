@@ -19,7 +19,7 @@ import {
     MAX_CUSTOM_WORLDVIEW_LENGTH
 } from '../formOptions';
 import { GalleryFormSettings, UserNicknameType } from '../types';
-import { GEMINI_MODEL_TEXT, GEMINI_MODEL_PRO } from '../constants';
+import { GEMINI_MODEL_TEXT, GEMINI_MODEL_PRO, GEMINI_MODEL_3_PRO } from '../constants';
 import { generateRandomIp } from '../utils/common';
 
 export interface GalleryFormValidationErrors {
@@ -53,7 +53,7 @@ export const useGalleryForm = (initialState?: Partial<GalleryFormSettings>) => {
     const [isQualityUpgradeUnlocked, setIsQualityUpgradeUnlocked] = useState<boolean>(initialState?.isQualityUpgradeUnlocked !== undefined ? initialState.isQualityUpgradeUnlocked : true); 
     const [isQualityUpgradeEnabled, setIsQualityUpgradeEnabled] = useState<boolean>(initialState?.isQualityUpgradeEnabled || false);
     const [isSearchEnabled, setIsSearchEnabled] = useState<boolean>(initialState?.isSearchEnabled || false);
-    const [selectedModel, setSelectedModel] = useState<string>(initialState?.selectedModel || GEMINI_MODEL_TEXT);
+    const [selectedModel, setSelectedModel] = useState<string>(initialState?.selectedModel || GEMINI_MODEL_3_PRO);
 
     // User Profile State
     const [userNicknameType, setUserNicknameType] = useState<UserNicknameType>(initialState?.userNicknameType || 'ANONYMOUS');
