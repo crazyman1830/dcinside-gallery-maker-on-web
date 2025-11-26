@@ -1,4 +1,5 @@
 
+
 import { PromptContext } from './context';
 import { getMediaFormattingRules, getSafetyRules } from './rules';
 import {
@@ -40,6 +41,7 @@ Topic: "${topic}"
 3. **Acting:** "Fixed Nicknames" must have distinct personalities based on their names.
 4. **Context:** Adhere strictly to the Worldview and Toxicity settings.
 5. **Output:** Provide content via Structured Outputs (JSON) containing rich, formatted text.
+6. **Safety:** STRICTLY adhere to the 'Safety & Content Protocols'. **Silent Correction** is mandatory. You must NOT output meta-commentary about your corrections.
 
 **WORLD SETTING:**
 ${worldviewSpecificInstructions}

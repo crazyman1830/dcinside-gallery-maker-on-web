@@ -1,0 +1,26 @@
+{
+  "id": "preset-example-fantasy",
+  "name": "[예시] 판타지 - 마법",
+  "settings": {
+    "topic": "마법",
+    "discussionContext": "가장 쓸모있는 생활마법에 대한 논쟁",
+    "selectedWorldview": "FANTASY",
+    "customWorldviewText": "",
+    "selectedWorldviewEra": "MEDIEVAL",
+    "selectedToxicityLevel": "MEDIUM",
+    "selectedAnonymousNickRatio": "BALANCED",
+    "userSpecies": "엘프, 드워프, 인간 등 다양함",
+    "userAffiliation": "",
+    "isManualGenderRatio": false,
+    "manualMalePercentage": 50,
+    "isManualAgeRange": false,
+    "manualSelectedAgeGroups": [],
+    "isQualityUpgradeUnlocked": true,
+    "isQualityUpgradeEnabled": false,
+    "isSearchEnabled": false,
+    "selectedModel": "gemini-2.5-flash",
+    "userNicknameType": "ANONYMOUS",
+    "fixedNickname": "",
+    "userReputation": 50
+  }
+}

@@ -1,0 +1,27 @@
+
+{
+  "id": "preset-example-historical-joseon",
+  "name": "[예시] 조선시대 - 과거 시험",
+  "settings": {
+    "topic": "과거 시험",
+    "discussionContext": "이번 식년시 시제 유출 의혹 및 낙방자들의 한탄",
+    "selectedWorldview": "NONE",
+    "customWorldviewText": "",
+    "selectedWorldviewEra": "MEDIEVAL",
+    "selectedToxicityLevel": "SPICY",
+    "selectedAnonymousNickRatio": "LOW_ANON",
+    "userSpecies": "인간",
+    "userAffiliation": "성균관 유생",
+    "isManualGenderRatio": true,
+    "manualMalePercentage": 90,
+    "isManualAgeRange": false,
+    "manualSelectedAgeGroups": [],
+    "isQualityUpgradeUnlocked": true,
+    "isQualityUpgradeEnabled": false,
+    "isSearchEnabled": false,
+    "selectedModel": "gemini-2.5-flash",
+    "userNicknameType": "ANONYMOUS",
+    "fixedNickname": "",
+    "userReputation": 50
+  }
+}

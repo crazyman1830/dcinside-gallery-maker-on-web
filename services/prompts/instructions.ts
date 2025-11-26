@@ -96,6 +96,7 @@ export const generateToxicitySpecificInstructions = (toxicityLevelValue: string)
     const selectedToxicity = TOXICITY_LEVEL_OPTIONS.find(tl => tl.value === toxicityLevelValue) || TOXICITY_LEVEL_OPTIONS.find(tl => tl.value === DEFAULT_TOXICITY_LEVEL)!;
     let toxicitySpecificInstructions = "";
 
+    // Gemini 3 optimization: Removed variable temperature suggestions. Focused on direct instructions.
     switch (selectedToxicity.value) {
         case "MILD":
             toxicitySpecificInstructions = `
@@ -170,21 +171,29 @@ export const generatePlayerStatusInstructions = (userProfile?: UserProfile) => {
 
     let statusDescription = "";
     if (reputation <= 20) {
-        statusDescription = "VILLAIN (Hated). Replies should be hostile/mocking.";
+        statusDescription = "**PUBLIC ENEMY (VILLAIN)**. This user is hated. Generated comments MUST mock, insult, and attack this user. Do NOT agree with them.";
     } else if (reputation <= 40) {
-        statusDescription = "UNPOPULAR (Annoying). Users are dismissive.";
+        statusDescription = "**UNPOPULAR/ANNOYING**. This user is dismissed as a troll or idiot. React with sarcasm or 'nobody asked' attitude.";
     } else if (reputation <= 60) {
-        statusDescription = "NEUTRAL. Standard engagement.";
+        statusDescription = "**NEUTRAL/INVISIBLE**. Treat as a random user. Standard reactions based on content quality.";
     } else if (reputation <= 80) {
-        statusDescription = "POPULAR. Users are friendly/agreeable.";
+        statusDescription = "**POPULAR/LIKED**. This user is well-regarded. React positively, agree with them, and defend them from critics.";
     } else {
-        statusDescription = "LEGEND/IDOL. Users worship and defend this user.";
+        statusDescription = "**LEGEND/IDOL (GOD)**. This user is worshipped. Generated comments MUST blindly agree, praise, and treat their word as law.";
+    }
+
+    let impersonationBan = "";
+    if (userProfile.nicknameType === 'FIXED') {
+        impersonationBan = `- **STRICT IMPERSONATION BAN:** You must **NEVER** generate a Post or Comment where the 'author' is exactly "${nickname}". This identity is reserved for the Human User. You are simulating OTHER users.`;
+    } else {
+        impersonationBan = `- **STRICT IMPERSONATION BAN:** You must **NEVER** generate content attributed to the specific identity "${fullNickname}".`;
     }
 
     return `
-**Current User Context:**
-- **User:** "${fullNickname}"
+**ACTIVE USER CONTEXT (CRITICAL):**
+- **Target User:** "${fullNickname}"
 - **Status:** ${statusDescription}
-- **Action:** React to this specific user according to their status.
+- **Instruction:** When interacting with content from "${fullNickname}", YOU MUST adopt the reaction style defined above.
+${impersonationBan}
 `;
 };
