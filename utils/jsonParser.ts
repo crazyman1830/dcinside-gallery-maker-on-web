@@ -7,11 +7,13 @@ export function parseProtectedJson<T>(
   errorContextName: string
 ): T {
   let jsonStr = responseText.trim();
+  
   // Remove markdown code fences if present
-  const fenceRegex = /^```(\w*)?\s*\n?(.*?)\n?\s*```$/s;
+  // Fix: Removed anchors (^ and $) to find code blocks embedded within text
+  const fenceRegex = /```(?:json)?\s*\n?(.*?)\n?\s*```/s;
   const match = jsonStr.match(fenceRegex);
-  if (match && match[2]) {
-    jsonStr = match[2].trim();
+  if (match && match[1]) {
+    jsonStr = match[1].trim();
   }
   
   try {
