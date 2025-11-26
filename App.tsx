@@ -88,7 +88,7 @@ const App: React.FC = () => {
 
                 {galleryData && !isLoading && (
                     <div className="bg-white shadow-xl shadow-slate-200/60 rounded-2xl overflow-hidden border border-slate-100 animate-fade-in">
-                        <GalleryHeader galleryTitle={galleryData.galleryTitle} sources={galleryData.sources} />
+                        <GalleryHeader galleryTitle={galleryData.galleryTitle} />
                         <div className="p-4 md:p-6 bg-slate-50/30 min-h-[500px]">
                             {selectedPost ? (
                                 <>

@@ -18,87 +18,46 @@
     *   **댓글 시스템**: AI가 작성한 댓글 및 대댓글 확인 (티키타카 구현)
     *   **사용자 참여**: 사용자가 직접 글이나 댓글을 작성하면 AI가 그에 맞춰 반응
 *   **고급 기능**:
-    *   **실시간 웹 검색 (Google Search Grounding)**: 최신 뉴스나 트렌드를 반영하여 갤러리 생성
+    *   Google Search Grounding을 통한 실시간 정보 반영 (최신 뉴스/트렌드)
     *   스트리밍 응답을 통한 빠른 로딩 경험
     *   설정 프리셋 저장/불러오기 (Local Storage)
 
----
-
-## 🐣 초보자를 위한 상세 실행 가이드 (Windows/Mac 공통)
-
-컴퓨터나 코딩을 잘 모르는 분들도 따라 하실 수 있도록 아주 자세하게 설명했습니다. 차근차근 따라와 주세요!
-
-### 1단계: 필수 프로그램 설치
-
-이 프로젝트를 실행하려면 **Node.js**라는 프로그램과 **VS Code**라는 코드 편집기가 필요합니다.
-
-1.  **Node.js 설치**:
-    *   [Node.js 공식 홈페이지(클릭)](https://nodejs.org/)에 접속합니다.
-    *   왼쪽에 있는 **LTS (Long Term Support)** 버튼을 눌러 다운로드하고 설치합니다. (설치 중 설정은 모두 'Next'를 눌러 기본값으로 진행하시면 됩니다.)
-2.  **VS Code 설치**:
-    *   [Visual Studio Code 홈페이지(클릭)](https://code.visualstudio.com/)에 접속합니다.
-    *   파란색 **Download** 버튼을 눌러 설치합니다.
-
-### 2단계: 프로젝트 열기
-
-1.  다운로드 받은 이 프로젝트 폴더의 압축을 풉니다.
-2.  **VS Code**를 실행합니다.
-3.  VS Code 상단 메뉴에서 **File (파일) > Open Folder (폴더 열기)**를 클릭합니다.
-4.  방금 압축을 푼 프로젝트 폴더를 선택하고 '열기'를 누릅니다.
-
-### 3단계: Google Gemini API 키 발급받기
-
-AI를 작동시키기 위한 열쇠(Key)가 필요합니다. 무료로 발급받을 수 있습니다.
-
-1.  [Google AI Studio(클릭)](https://aistudio.google.com/app/apikey)에 접속하여 구글 아이디로 로그인합니다.
-2.  파란색 **Create API key** 버튼을 클릭합니다.
-3.  생성된 **API Key** (영문과 숫자로 된 긴 문자열)를 복사해둡니다. (메모장에 잠시 붙여넣으세요.)
-
-### 4단계: 환경 변수 설정하기
-
-복사한 키를 프로젝트에 입력하는 과정입니다.
-
-1.  VS Code 왼쪽 탐색기(파일 목록)의 빈 공간에 마우스 우클릭을 하고 **New File (새 파일)**을 누릅니다.
-2.  파일 이름을 정확히 `.env` 라고 입력하고 엔터를 칩니다. (앞에 점 `.`이 꼭 있어야 합니다!)
-3.  새로 만든 `.env` 파일 안에 아래 내용을 복사해서 붙여넣습니다. `여기에_복사한_키_붙여넣기` 부분을 지우고 아까 복사한 키를 넣으세요.
-
-```env
-VITE_GEMINI_API_KEY=여기에_복사한_키_붙여넣기
-```
-*(예시: VITE_GEMINI_API_KEY=AIzaSyD...)*
-
-4.  키보드의 `Ctrl + S` (맥은 `Cmd + S`)를 눌러 저장합니다.
-
-### 5단계: 실행하기
-
-이제 준비가 끝났습니다! 명령어를 입력해 실행해봅시다.
-
-1.  VS Code 상단 메뉴에서 **Terminal (터미널) > New Terminal (새 터미널)**을 클릭합니다.
-2.  화면 아래쪽에 나타난 창에 다음 명령어를 입력하고 엔터(Enter)를 칩니다. (필요한 도구들을 설치하는 과정입니다. 시간이 조금 걸릴 수 있습니다.)
-
-```bash
-npm install
-```
-
-3.  설치가 끝나면, 다음 명령어를 입력하고 엔터를 칩니다. (앱을 실행하는 명령어입니다.)
-
-```bash
-npm run dev
-```
-
-4.  터미널에 `Local: http://localhost:5173/` 같은 문구가 뜰 것입니다.
-5.  키보드의 **Ctrl 키(맥은 Cmd 키)를 누른 상태에서 저 링크를 클릭**하거나, 인터넷 브라우저 주소창에 `http://localhost:5173`을 입력하세요.
-6.  짜잔! 갤러리 생성기가 실행되었습니다. 🎉
-
----
-
-## 🛠️ 기술 스택 (개발자용 참고)
+## 🛠️ 기술 스택
 
 *   **Frontend**: React 19, TypeScript
 *   **Build Tool**: Vite
 *   **Styling**: Tailwind CSS
-*   **AI Model**: Google Gemini API (`gemini-2.5-flash`, `gemini-2.5-pro`, `gemini-3.0-pro`)
+*   **AI Model**: Google Gemini API (`gemini-2.5-flash`, `gemini-2.5-pro` 등)
     *   SDK: `@google/genai`
+
+## 🚀 설치 및 실행 방법
+
+이 프로젝트는 Vite를 기반으로 합니다.
+
+### 1. 사전 요구사항
+*   Node.js (v18 이상 권장)
+*   Google Gemini API Key
+
+### 2. 설치
+
+```bash
+# 의존성 설치
+npm install
+```
+
+### 3. 환경 변수 설정
+프로젝트 루트에 `.env` 파일을 생성하거나 환경 변수를 설정해야 합니다. (WebContainer 환경에서는 자동으로 주입될 수 있습니다.)
+
+```env
+VITE_GEMINI_API_KEY=your_google_api_key_here
+```
+
+### 4. 실행
+
+```bash
+# 개발 서버 실행
+npm run dev
+```
 
 ## 📂 프로젝트 구조
 

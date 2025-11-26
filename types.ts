@@ -24,15 +24,9 @@ export interface Post {
   isBestPost?: boolean; 
 }
 
-export interface GroundingSource {
-    title?: string;
-    uri?: string;
-}
-
 export interface GalleryData {
   galleryTitle: string;
   posts: Post[]; 
-  sources?: GroundingSource[]; // Added for Google Search Grounding
 }
 
 export type UserNicknameType = 'FIXED' | 'ANONYMOUS';

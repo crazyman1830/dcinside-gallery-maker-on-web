@@ -106,13 +106,15 @@ export const generateGalleryStreamFromGemini = async (
     systemInstruction: systemInstruction,
   };
 
-  // Thinking Config Removed as per Gemini 3 Developer Guide (Default is optimal)
+  // Thinking Config for supported models (Pro series generally)
+  if (modelName.includes('thinking') || modelName === GEMINI_MODEL_3_PRO || modelName === GEMINI_MODEL_PRO) {
+        config.thinkingConfig = { thinkingBudget: 2048 }; 
+  }
 
   // If search is enabled, we rely on the Prompt to enforce JSON because responseSchema + Tools can be restrictive
-  // We rely on "jsonFormattingInstruction" in the prompt to get JSON.
   if (useSearch) {
     config.tools = [{ googleSearch: {} }];
-    // Strict requirement: DO NOT set responseMimeType when using googleSearch
+    config.responseMimeType = "application/json";
   } else {
     // When NOT using search, use Strict Schema for perfect JSON
     config.responseMimeType = "application/json";
@@ -263,5 +265,35 @@ export const generateWorldviewFeedback = async (
         }
         console.error("Error calling Gemini API in generateWorldviewFeedback:", error);
         throw new Error(`${DEFAULT_ERROR_MESSAGE} (AI 피드백 생성 서비스 접속 오류)`);
+    }
+};
+
+export const generateImageFromGemini = async (
+    description: string
+): Promise<string> => {
+    const ai = createAiInstance();
+
+    try {
+        const response = await ai.models.generateImages({
+            model: 'imagen-4.0-generate-001',
+            prompt: description,
+            config: {
+                numberOfImages: 1,
+                outputMimeType: 'image/jpeg',
+                aspectRatio: '1:1',
+            },
+        });
+
+        if (response.generatedImages && response.generatedImages.length > 0 && response.generatedImages[0].image) {
+            const base64ImageBytes = response.generatedImages[0].image.imageBytes;
+            return `data:image/jpeg;base64,${base64ImageBytes}`;
+        }
+        throw new Error("이미지 생성 결과가 없습니다.");
+    } catch (error) {
+        if (error instanceof Error && error.message === API_KEY_MISSING_ERROR_MESSAGE) {
+            throw error;
+        }
+        console.error("Error calling Gemini API in generateImageFromGemini:", error);
+        throw new Error(`${DEFAULT_ERROR_MESSAGE} (AI 이미지 생성 오류)`);
     }
 };
