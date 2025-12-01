@@ -8,16 +8,17 @@ import { GeminiResponseData, GeminiCommentContent, GeminiEvaluationResponse } fr
 function extractJsonString(text: string): string {
     let jsonStr = text.trim();
 
-    // 1. Try extracting from Markdown Code Blocks first (Standard LLM behavior)
+    // 1. Try extracting from Markdown Code Blocks first
     // Matches ```json ... ``` or just ``` ... ```
     const fenceRegex = /```(?:json)?\s*([\s\S]*?)\s*```/i;
     const match = jsonStr.match(fenceRegex);
     if (match && match[1]) {
-        return match[1].trim();
+        jsonStr = match[1].trim();
     }
 
     // 2. Fallback: Heuristic extraction for raw JSON (finding outer braces/brackets)
     // This helps when the model forgets markdown fences but outputs valid JSON with preamble/postscript.
+    // Also runs on the extracted block to ensure no leading/trailing whitespace garbage
     const firstOpenBrace = jsonStr.indexOf('{');
     const firstOpenBracket = jsonStr.indexOf('[');
 
@@ -38,11 +39,15 @@ function extractJsonString(text: string): string {
         // We search from the end to capture the largest possible JSON block
         const lastIndex = isObject ? jsonStr.lastIndexOf('}') : jsonStr.lastIndexOf(']');
         if (lastIndex > startIndex) {
-            return jsonStr.substring(startIndex, lastIndex + 1);
+            jsonStr = jsonStr.substring(startIndex, lastIndex + 1);
         }
     }
 
-    // Return original if no heuristics worked (let JSON.parse fail naturally)
+    // 3. Remove potential JS-style comments (// ...) which standard JSON.parse doesn't support
+    // Be careful not to remove http://
+    // Regex: Match // not preceded by :
+    jsonStr = jsonStr.replace(/(?<!:)\/\/.*$/gm, "");
+
     return jsonStr;
 }
 

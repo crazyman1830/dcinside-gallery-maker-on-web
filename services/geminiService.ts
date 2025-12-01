@@ -42,8 +42,9 @@ async function withRetry<T>(
             return await operation();
         } catch (error) {
             lastError = error;
-            if (error instanceof Error && error.message === API_KEY_MISSING_ERROR_MESSAGE) {
-                throw error; // Don't retry auth errors
+            // Don't retry auth errors or specific 400s that won't change
+            if (error instanceof Error && (error.message === API_KEY_MISSING_ERROR_MESSAGE || error.message.includes('INVALID_ARGUMENT'))) {
+                throw error;
             }
             console.warn(`Attempt ${i + 1} failed for ${context}:`, error);
             if (i < MAX_RETRIES) {
@@ -141,23 +142,15 @@ export const generateGalleryStreamFromGemini = async (
     config.responseSchema = galleryResponseSchema;
   }
 
-  // Note: We do not use withRetry for streaming response initiation here 
-  // because retry logic for streams is better handled at connection level or not at all 
-  // if partial data has already been emitted. The UI handles stream errors.
-  try {
-    console.debug(`[Gemini] Generating Gallery Stream. System v${SYSTEM_INSTRUCTION_VERSION}, Prompt v${GALLERY_PROMPT_VERSION}`);
-    return await ai.models.generateContentStream({
-      model: modelName,
-      contents: prompt,
-      config: config,
-    });
-  } catch (error) {
-    if (error instanceof Error && error.message === API_KEY_MISSING_ERROR_MESSAGE) {
-      throw error;
-    }
-    console.error("Error calling Gemini API Stream in generateGalleryStreamFromGemini:", error);
-    throw new Error(`${DEFAULT_ERROR_MESSAGE} (AI 서비스 접속 오류)`);
-  }
+  // Retry logic for connection establishment only
+  return withRetry(async () => {
+      console.debug(`[Gemini] Generating Gallery Stream. System v${SYSTEM_INSTRUCTION_VERSION}, Prompt v${GALLERY_PROMPT_VERSION}`);
+      return await ai.models.generateContentStream({
+        model: modelName,
+        contents: prompt,
+        config: config,
+      });
+  }, "generateGalleryStreamFromGemini");
 };
 
 export const generateCommentsForUserPost = async (

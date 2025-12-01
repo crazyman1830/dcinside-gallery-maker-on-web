@@ -2,7 +2,7 @@
 import { Post, GalleryData } from '../../types';
 import { PromptContext } from './context';
 
-export const EVALUATION_PROMPT_VERSION = "2.0.0";
+export const EVALUATION_PROMPT_VERSION = "2.0.1";
 
 export const buildPostEvaluationPrompt = (
     userPost: Pick<Post, 'title' | 'author' | 'content'>,

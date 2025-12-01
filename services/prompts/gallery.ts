@@ -12,7 +12,7 @@ import {
     MAX_COMMENTS_PER_POST,
 } from '../../constants';
 
-export const GALLERY_PROMPT_VERSION = "2.0.0";
+export const GALLERY_PROMPT_VERSION = "2.0.1";
 
 export const buildGalleryGenerationPrompt = (
     ctx: PromptContext

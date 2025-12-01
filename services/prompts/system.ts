@@ -9,7 +9,7 @@ import {
     generatePlayerStatusInstructions
 } from './instructions';
 
-export const SYSTEM_INSTRUCTION_VERSION = "2.1.0";
+export const SYSTEM_INSTRUCTION_VERSION = "2.1.1";
 
 export const buildSystemInstruction = (
     topic: string,

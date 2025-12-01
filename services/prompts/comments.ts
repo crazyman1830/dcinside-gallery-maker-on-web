@@ -4,7 +4,7 @@ import { PromptContext } from './context';
 import { generateToxicitySpecificInstructions, generatePlayerStatusInstructions } from './instructions';
 import { resolveUserNickname } from '../../utils/common';
 
-export const COMMENT_PROMPT_VERSION = "2.0.0";
+export const COMMENT_PROMPT_VERSION = "2.0.1";
 
 export const buildCommentGenerationPrompt = (
     userPost: Pick<Post, 'title' | 'author' | 'content'>,
