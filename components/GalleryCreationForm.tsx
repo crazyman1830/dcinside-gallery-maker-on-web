@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useGalleryForm, GalleryFormValidationErrors } from '../hooks/useGalleryForm';
+import { GalleryFormProvider } from '../context/GalleryFormContext';
 import { LoadingSpinner } from './LoadingSpinner';
 import { FormSection } from './FormSection';
 import { WorldviewSection } from './WorldviewSection';
@@ -19,8 +20,9 @@ interface GalleryCreationFormProps {
     setFormError: (message: string) => void;
 }
 
-export const GalleryCreationForm: React.FC<GalleryCreationFormProps> = ({ isLoading, isApiKeyAvailable, onSubmit, setFormError }) => {
-    const form = useGalleryForm({ isQualityUpgradeUnlocked: true });
+// Inner Component containing the UI logic
+const GalleryCreationFormContent: React.FC<GalleryCreationFormProps> = ({ isLoading, isApiKeyAvailable, onSubmit, setFormError }) => {
+    const form = useGalleryForm();
     
     // Preset State
     const [presets, setPresets] = useState<Preset[]>([]);
@@ -102,7 +104,7 @@ export const GalleryCreationForm: React.FC<GalleryCreationFormProps> = ({ isLoad
             discussionContext: form.discussionContext,
             worldviewValue: form.selectedWorldview,
             customWorldviewText: form.selectedWorldview === 'CUSTOM' ? form.customWorldviewText : undefined,
-            worldviewEraValue: form.selectedWorldviewEra, // Pass Era for all worldviews
+            worldviewEraValue: form.selectedWorldviewEra, 
             toxicityLevelValue: form.selectedToxicityLevel,
             anonymousNickRatioValue: form.selectedAnonymousNickRatio,
             userSpecies: form.userSpecies,
@@ -111,7 +113,6 @@ export const GalleryCreationForm: React.FC<GalleryCreationFormProps> = ({ isLoad
             ageRangeValue: form.getAgeRangeParam(),
             selectedModel: form.selectedModel,
             useSearch: form.isSearchEnabled,
-            // Pass User Profile
             userProfile: {
                 nicknameType: form.userNicknameType,
                 nickname: form.userNicknameType === 'FIXED' ? form.fixedNickname : 'ㅇㅇ',
@@ -256,5 +257,14 @@ export const GalleryCreationForm: React.FC<GalleryCreationFormProps> = ({ isLoad
             {isLoading ? <LoadingSpinner small={true} /> : <><i className="fas fa-magic mr-2"></i>갤러리 생성</>}
           </button>
         </form>
+    );
+};
+
+// Wrapper Component to provide Context
+export const GalleryCreationForm: React.FC<GalleryCreationFormProps> = (props) => {
+    return (
+        <GalleryFormProvider initialState={{ isQualityUpgradeUnlocked: true }}>
+            <GalleryCreationFormContent {...props} />
+        </GalleryFormProvider>
     );
 };
