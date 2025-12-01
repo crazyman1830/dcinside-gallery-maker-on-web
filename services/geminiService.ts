@@ -4,10 +4,10 @@ import { GeminiCommentContent, GeminiEvaluationResponse, Post, Comment, GalleryD
 import {
     GEMINI_MODEL_TEXT, DEFAULT_ERROR_MESSAGE, GEMINI_MODEL_PRO, GEMINI_MODEL_3_PRO
 } from '../constants';
-import { buildGalleryGenerationPrompt } from './prompts/gallery';
-import { buildCommentGenerationPrompt, buildFollowUpCommentPrompt } from './prompts/comments';
-import { buildPostEvaluationPrompt, buildWorldviewFeedbackPrompt } from './prompts/evaluation';
-import { buildSystemInstruction } from './prompts/system';
+import { buildGalleryGenerationPrompt, GALLERY_PROMPT_VERSION } from './prompts/gallery';
+import { buildCommentGenerationPrompt, buildFollowUpCommentPrompt, COMMENT_PROMPT_VERSION } from './prompts/comments';
+import { buildPostEvaluationPrompt, buildWorldviewFeedbackPrompt, EVALUATION_PROMPT_VERSION } from './prompts/evaluation';
+import { buildSystemInstruction, SYSTEM_INSTRUCTION_VERSION } from './prompts/system';
 import {
     parseGeminiCommentArrayResponse,
     parseGeminiEvaluationResponse
@@ -28,6 +28,33 @@ function createAiInstance(): GoogleGenAI {
   }
   return new GoogleGenAI({ apiKey: API_KEY });
 }
+
+// --- Retry Logic ---
+const MAX_RETRIES = 2;
+
+async function withRetry<T>(
+    operation: () => Promise<T>, 
+    context: string
+): Promise<T> {
+    let lastError: any;
+    for (let i = 0; i <= MAX_RETRIES; i++) {
+        try {
+            return await operation();
+        } catch (error) {
+            lastError = error;
+            if (error instanceof Error && error.message === API_KEY_MISSING_ERROR_MESSAGE) {
+                throw error; // Don't retry auth errors
+            }
+            console.warn(`Attempt ${i + 1} failed for ${context}:`, error);
+            if (i < MAX_RETRIES) {
+                const delay = 1000 * Math.pow(2, i); // Exponential backoff (1s, 2s)
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+        }
+    }
+    throw lastError;
+}
+
 
 // --- Schemas for Structured Output ---
 
@@ -102,14 +129,9 @@ export const generateGalleryStreamFromGemini = async (
   const { prompt } = buildGalleryGenerationPrompt(galleryContext);
 
   const config: any = {
-    // Removed explicit temperature to allow model default (1.0)
     systemInstruction: systemInstruction,
   };
 
-  // Thinking Config Removed as per Gemini 3 Developer Guide (Default is optimal)
-
-  // If search is enabled, we rely on the Prompt to enforce JSON because responseSchema + Tools can be restrictive
-  // We rely on "jsonFormattingInstruction" in the prompt to get JSON.
   if (useSearch) {
     config.tools = [{ googleSearch: {} }];
     // Strict requirement: DO NOT set responseMimeType when using googleSearch
@@ -119,7 +141,11 @@ export const generateGalleryStreamFromGemini = async (
     config.responseSchema = galleryResponseSchema;
   }
 
+  // Note: We do not use withRetry for streaming response initiation here 
+  // because retry logic for streams is better handled at connection level or not at all 
+  // if partial data has already been emitted. The UI handles stream errors.
   try {
+    console.debug(`[Gemini] Generating Gallery Stream. System v${SYSTEM_INSTRUCTION_VERSION}, Prompt v${GALLERY_PROMPT_VERSION}`);
     return await ai.models.generateContentStream({
       model: modelName,
       contents: prompt,
@@ -140,14 +166,16 @@ export const generateCommentsForUserPost = async (
     minComments: number, maxComments: number,
     modelName: string = GEMINI_MODEL_3_PRO
 ): Promise<GeminiCommentContent[]> => {
-    const ai = createAiInstance();
-    const systemInstruction = buildSystemInstruction(galleryContext.topic, galleryContext);
-    
-    const { prompt, numberOfCommentsToGenerate } = buildCommentGenerationPrompt(
-        userPost, galleryContext, minComments, maxComments
-    );
+    return withRetry(async () => {
+        const ai = createAiInstance();
+        const systemInstruction = buildSystemInstruction(galleryContext.topic, galleryContext);
+        
+        const { prompt, numberOfCommentsToGenerate } = buildCommentGenerationPrompt(
+            userPost, galleryContext, minComments, maxComments
+        );
 
-    try {
+        console.debug(`[Gemini] Generating Comments. System v${SYSTEM_INSTRUCTION_VERSION}, Prompt v${COMMENT_PROMPT_VERSION}`);
+        
         const response: GenerateContentResponse = await ai.models.generateContent({
             model: modelName,
             contents: prompt,
@@ -161,13 +189,7 @@ export const generateCommentsForUserPost = async (
 
         if (geminiComments.length < minComments) console.warn(`AI generated ${geminiComments.length} comments for user post, less than min ${minComments}. Requested ${numberOfCommentsToGenerate}.`);
         return geminiComments.slice(0, Math.min(numberOfCommentsToGenerate, maxComments));
-    } catch (error) {
-        if (error instanceof Error && error.message === API_KEY_MISSING_ERROR_MESSAGE) {
-            throw error;
-        }
-        console.error("Error generating comments for user post:", error);
-        throw new Error(`${DEFAULT_ERROR_MESSAGE} (AI 댓글 생성 서비스 접속 또는 데이터 파싱 오류)`);
-    }
+    }, "generateCommentsForUserPost");
 };
 
 export const generateFollowUpCommentsForPost = async (
@@ -177,14 +199,16 @@ export const generateFollowUpCommentsForPost = async (
     minCommentsToGenerate: number, maxCommentsToGenerate: number,
     modelName: string = GEMINI_MODEL_3_PRO
 ): Promise<GeminiCommentContent[]> => {
-    const ai = createAiInstance();
-    const systemInstruction = buildSystemInstruction(galleryContext.topic, galleryContext);
+    return withRetry(async () => {
+        const ai = createAiInstance();
+        const systemInstruction = buildSystemInstruction(galleryContext.topic, galleryContext);
 
-    const { prompt, numberOfCommentsToGenerate } = buildFollowUpCommentPrompt(
-        originalPost, existingComments, galleryContext, minCommentsToGenerate, maxCommentsToGenerate
-    );
+        const { prompt, numberOfCommentsToGenerate } = buildFollowUpCommentPrompt(
+            originalPost, existingComments, galleryContext, minCommentsToGenerate, maxCommentsToGenerate
+        );
 
-    try {
+        console.debug(`[Gemini] Generating Follow-up Comments. System v${SYSTEM_INSTRUCTION_VERSION}, Prompt v${COMMENT_PROMPT_VERSION}`);
+
         const response: GenerateContentResponse = await ai.models.generateContent({
             model: modelName,
             contents: prompt,
@@ -198,13 +222,7 @@ export const generateFollowUpCommentsForPost = async (
 
         if (geminiComments.length < minCommentsToGenerate) console.warn(`AI generated ${geminiComments.length} follow-up comments, less than min ${minCommentsToGenerate}. Requested ${numberOfCommentsToGenerate}.`);
         return geminiComments.slice(0, Math.min(numberOfCommentsToGenerate, maxCommentsToGenerate));
-    } catch (error) {
-        if (error instanceof Error && error.message === API_KEY_MISSING_ERROR_MESSAGE) {
-            throw error;
-        }
-        console.error("Error generating follow-up comments:", error);
-        throw new Error(`${DEFAULT_ERROR_MESSAGE} (AI 후속 댓글 생성 서비스 접속 또는 데이터 파싱 오류)`);
-    }
+    }, "generateFollowUpCommentsForPost");
 };
 
 export const evaluateUserPostContent = async (
@@ -212,12 +230,14 @@ export const evaluateUserPostContent = async (
     galleryContext: PromptContext,
     modelName: string = GEMINI_MODEL_3_PRO
 ): Promise<GeminiEvaluationResponse> => {
-    const ai = createAiInstance();
-    const systemInstruction = buildSystemInstruction(galleryContext.topic, galleryContext);
+    return withRetry(async () => {
+        const ai = createAiInstance();
+        const systemInstruction = buildSystemInstruction(galleryContext.topic, galleryContext);
 
-    const { prompt } = buildPostEvaluationPrompt(userPost, galleryContext);
+        const { prompt } = buildPostEvaluationPrompt(userPost, galleryContext);
 
-    try {
+        console.debug(`[Gemini] Evaluating Post. System v${SYSTEM_INSTRUCTION_VERSION}, Prompt v${EVALUATION_PROMPT_VERSION}`);
+
         const response: GenerateContentResponse = await ai.models.generateContent({
             model: modelName,
             contents: prompt,
@@ -229,17 +249,14 @@ export const evaluateUserPostContent = async (
         });
         
         try {
-            return JSON.parse(response.text || "{}");
-        } catch {
+            // Priority: response.text (might be raw JSON), but using responseSchema guarantees it.
+            // We use parseGeminiEvaluationResponse to safely extract/parse.
             return parseGeminiEvaluationResponse(response.text);
+        } catch {
+             // Fallback usually not needed with schema, but kept for safety
+            return JSON.parse(response.text || "{}");
         }
-    } catch (error) {
-        if (error instanceof Error && error.message === API_KEY_MISSING_ERROR_MESSAGE) {
-            throw error;
-        }
-        console.error("Error evaluating user post content:", error);
-        throw new Error(`${DEFAULT_ERROR_MESSAGE} (AI 게시물 평가 서비스 접속 또는 데이터 파싱 오류)`);
-    }
+    }, "evaluateUserPostContent");
 };
 
 export const generateWorldviewFeedback = async (
@@ -247,21 +264,16 @@ export const generateWorldviewFeedback = async (
     galleryData: GalleryData,
     modelName: string = GEMINI_MODEL_3_PRO
 ): Promise<string> => {
-    const ai = createAiInstance();
-    const { prompt } = buildWorldviewFeedbackPrompt(customWorldviewText, galleryData);
+    return withRetry(async () => {
+        const ai = createAiInstance();
+        const { prompt } = buildWorldviewFeedbackPrompt(customWorldviewText, galleryData);
 
-    try {
+        console.debug(`[Gemini] Generating Feedback. Prompt v${EVALUATION_PROMPT_VERSION}`);
+
         const response: GenerateContentResponse = await ai.models.generateContent({
             model: modelName,
             contents: prompt,
-            // Removed temperature setting to rely on model default (Gemini 3 optimal: 1.0)
         });
         return response.text || "피드백을 생성할 수 없습니다.";
-    } catch (error) {
-        if (error instanceof Error && error.message === API_KEY_MISSING_ERROR_MESSAGE) {
-            throw error;
-        }
-        console.error("Error calling Gemini API in generateWorldviewFeedback:", error);
-        throw new Error(`${DEFAULT_ERROR_MESSAGE} (AI 피드백 생성 서비스 접속 오류)`);
-    }
+    }, "generateWorldviewFeedback");
 };

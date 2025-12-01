@@ -1,20 +1,57 @@
 
 import { GeminiResponseData, GeminiCommentContent, GeminiEvaluationResponse } from '../types';
 
+/**
+ * Extracts JSON string from a larger text response.
+ * Handles Markdown code blocks, raw JSON with surrounding text, and attempts to find the valid JSON structure.
+ */
+function extractJsonString(text: string): string {
+    let jsonStr = text.trim();
+
+    // 1. Try extracting from Markdown Code Blocks first (Standard LLM behavior)
+    // Matches ```json ... ``` or just ``` ... ```
+    const fenceRegex = /```(?:json)?\s*([\s\S]*?)\s*```/i;
+    const match = jsonStr.match(fenceRegex);
+    if (match && match[1]) {
+        return match[1].trim();
+    }
+
+    // 2. Fallback: Heuristic extraction for raw JSON (finding outer braces/brackets)
+    // This helps when the model forgets markdown fences but outputs valid JSON with preamble/postscript.
+    const firstOpenBrace = jsonStr.indexOf('{');
+    const firstOpenBracket = jsonStr.indexOf('[');
+
+    let startIndex = -1;
+    let isObject = false;
+
+    // Determine if we are looking for an object or an array based on which comes first
+    if (firstOpenBrace !== -1 && (firstOpenBracket === -1 || firstOpenBrace < firstOpenBracket)) {
+        startIndex = firstOpenBrace;
+        isObject = true;
+    } else if (firstOpenBracket !== -1) {
+        startIndex = firstOpenBracket;
+        isObject = false;
+    }
+
+    if (startIndex !== -1) {
+        // Find the corresponding closing character
+        // We search from the end to capture the largest possible JSON block
+        const lastIndex = isObject ? jsonStr.lastIndexOf('}') : jsonStr.lastIndexOf(']');
+        if (lastIndex > startIndex) {
+            return jsonStr.substring(startIndex, lastIndex + 1);
+        }
+    }
+
+    // Return original if no heuristics worked (let JSON.parse fail naturally)
+    return jsonStr;
+}
+
 export function parseProtectedJson<T>(
   responseText: string,
   typeGuard: (parsed: any) => parsed is T,
   errorContextName: string
 ): T {
-  let jsonStr = responseText.trim();
-  
-  // Remove markdown code fences if present
-  // Fix: Removed anchors (^ and $) to find code blocks embedded within text
-  const fenceRegex = /```(?:json)?\s*\n?(.*?)\n?\s*```/s;
-  const match = jsonStr.match(fenceRegex);
-  if (match && match[1]) {
-    jsonStr = match[1].trim();
-  }
+  const jsonStr = extractJsonString(responseText);
   
   try {
     const parsed = JSON.parse(jsonStr);
@@ -23,14 +60,19 @@ export function parseProtectedJson<T>(
       return parsed;
     }
     
-    throw new Error(`AI 응답이 기대하는 ${errorContextName} JSON 형식이 아닙니다. 응답 내용: ${jsonStr.substring(0,200)}...`);
+    // Log for debugging (but throw friendly error)
+    console.warn(`Type guard failed for ${errorContextName}. Parsed object structure mismatch.`);
+    throw new Error(`AI 응답이 기대하는 ${errorContextName} 데이터 구조와 일치하지 않습니다.`);
   } catch (e) {
     console.error(`Failed to parse JSON ${errorContextName} response from Gemini:`, jsonStr, e);
     const errorMessage = e instanceof Error ? e.message : "알 수 없는 파싱 오류";
-    if (errorMessage.includes(`기대하는 ${errorContextName} JSON 형식이 아닙니다`)) {
+    
+    // If it's already our custom error, rethrow
+    if (errorMessage.includes("AI 응답이 기대하는")) {
         throw e;
     }
-    throw new Error(`AI ${errorContextName} 응답 JSON 파싱에 실패했습니다. 오류: ${errorMessage}. 응답 시작 부분: ${jsonStr.substring(0, 150)}...`);
+    
+    throw new Error(`AI ${errorContextName} 응답 JSON 파싱에 실패했습니다. (문법 오류 또는 불완전한 데이터)`);
   }
 }
 
@@ -60,8 +102,6 @@ export function parseGeminiResponse(responseText: string): GeminiResponseData {
 
 export function parseGeminiCommentArrayResponse(responseText: string): GeminiCommentContent[] {
   // We allow ANY valid JSON object/array initially, then process it deeply.
-  // We use a permissive guard here to bypass strict checking in parseProtectedJson,
-  // handling normalization logic manually below.
   const raw = parseProtectedJson(responseText, (obj): obj is any => true, "댓글 배열");
 
   let arrayToProcess: any[] = [];

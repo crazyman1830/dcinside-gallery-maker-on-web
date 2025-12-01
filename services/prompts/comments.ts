@@ -4,6 +4,8 @@ import { PromptContext } from './context';
 import { generateToxicitySpecificInstructions, generatePlayerStatusInstructions } from './instructions';
 import { resolveUserNickname } from '../../utils/common';
 
+export const COMMENT_PROMPT_VERSION = "2.0.0";
+
 export const buildCommentGenerationPrompt = (
     userPost: Pick<Post, 'title' | 'author' | 'content'>,
     galleryContext: PromptContext,
@@ -28,6 +30,7 @@ ${statusInstructions}
     }
 
     const prompt = `
+// PROMPT VERSION: ${COMMENT_PROMPT_VERSION}
 **1. CONTEXT: TARGET POST**
 - Title: "${userPost.title}"
 - Author: "${userPost.author}"
@@ -80,6 +83,7 @@ ${statusInstructions}
     }
 
     const prompt = `
+// PROMPT VERSION: ${COMMENT_PROMPT_VERSION}
 **1. CONTEXT**
 - Post: "${originalPost.title}"
 - Recent Comments:

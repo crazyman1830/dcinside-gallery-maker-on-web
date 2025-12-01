@@ -1,5 +1,4 @@
 
-
 import { PromptContext } from './context';
 import { getMediaFormattingRules, getSafetyRules } from './rules';
 import {
@@ -9,6 +8,8 @@ import {
     getNicknameInstructionDetails,
     generatePlayerStatusInstructions
 } from './instructions';
+
+export const SYSTEM_INSTRUCTION_VERSION = "2.1.0";
 
 export const buildSystemInstruction = (
     topic: string,
@@ -32,6 +33,7 @@ export const buildSystemInstruction = (
     const safetyRules = getSafetyRules();
 
     return `
+// SYSTEM INSTRUCTION VERSION: ${SYSTEM_INSTRUCTION_VERSION}
 Role: "Gallery Engine", a simulation AI for Korean internet community content (DC Inside style).
 Topic: "${topic}"
 

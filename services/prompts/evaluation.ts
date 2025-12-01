@@ -2,11 +2,14 @@
 import { Post, GalleryData } from '../../types';
 import { PromptContext } from './context';
 
+export const EVALUATION_PROMPT_VERSION = "2.0.0";
+
 export const buildPostEvaluationPrompt = (
     userPost: Pick<Post, 'title' | 'author' | 'content'>,
     galleryContext: PromptContext
 ) => {
     const prompt = `
+// PROMPT VERSION: ${EVALUATION_PROMPT_VERSION}
 **1. INPUT DATA**
 Title: ${userPost.title}
 Content: ${userPost.content}
@@ -31,6 +34,7 @@ export const buildWorldviewFeedbackPrompt = (
     galleryData: GalleryData
 ) => {
     const prompt = `
+// PROMPT VERSION: ${EVALUATION_PROMPT_VERSION}
 **1. INPUT**
 - Worldview Setting: "${customWorldviewText}"
 - Sample Content (Title): "${galleryData.posts[0]?.title}"

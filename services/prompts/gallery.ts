@@ -12,6 +12,8 @@ import {
     MAX_COMMENTS_PER_POST,
 } from '../../constants';
 
+export const GALLERY_PROMPT_VERSION = "2.0.0";
+
 export const buildGalleryGenerationPrompt = (
     ctx: PromptContext
 ) => {
@@ -64,6 +66,7 @@ Structure:
     }
 
     const prompt = `
+// PROMPT VERSION: ${GALLERY_PROMPT_VERSION}
 **1. CONTEXT & SETTINGS**
 - **Topic:** "${ctx.topic}"
 - **Burning Issue:** "${ctx.discussionContext || 'Daily chatter'}"
