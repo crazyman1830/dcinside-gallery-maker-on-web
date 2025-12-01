@@ -12,6 +12,7 @@ import { UserProfileSection } from './UserProfileSection';
 import { PresetSection } from './PresetSection';
 import { getPresets, saveUserPreset, deleteUserPreset } from '../services/presetService';
 import { Preset } from '../types';
+import { GEMINI_MODEL_3_PRO } from '../constants';
 
 interface GalleryCreationFormProps {
     isLoading: boolean;
@@ -263,8 +264,12 @@ const GalleryCreationFormContent: React.FC<GalleryCreationFormProps> = ({ isLoad
 // Wrapper Component to provide Context
 export const GalleryCreationForm: React.FC<GalleryCreationFormProps> = (props) => {
     return (
-        <GalleryFormProvider initialState={{ isQualityUpgradeUnlocked: true }}>
+        <GalleryFormProvider initialState={{ 
+            isQualityUpgradeUnlocked: true,
+            selectedModel: GEMINI_MODEL_3_PRO
+        }}>
             <GalleryCreationFormContent {...props} />
         </GalleryFormProvider>
     );
 };
+    

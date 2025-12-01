@@ -69,7 +69,7 @@ export const StreamingStatus: React.FC<StreamingStatusProps> = ({ streamingText 
             <div className="w-3 h-3 rounded-full bg-amber-500/80 shadow-sm"></div>
             <div className="w-3 h-3 rounded-full bg-emerald-500/80 shadow-sm"></div>
         </div>
-        <span className="text-xs text-slate-400 font-semibold tracking-wide">GEMINI-2.5 GENERATION PROTOCOL</span>
+        <span className="text-xs text-slate-400 font-semibold tracking-wide">GEMINI GENERATION PROTOCOL</span>
       </div>
 
       {/* Progress Bar */}
