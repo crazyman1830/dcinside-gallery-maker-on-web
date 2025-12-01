@@ -272,4 +272,3 @@ export const GalleryCreationForm: React.FC<GalleryCreationFormProps> = (props) =
         </GalleryFormProvider>
     );
 };
-    

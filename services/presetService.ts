@@ -1,5 +1,6 @@
 
 import { Preset, GalleryFormSettings } from '../types';
+import { GEMINI_MODEL_3_PRO } from '../constants';
 
 const STORAGE_KEY = 'user_presets';
 
@@ -25,7 +26,7 @@ const EXAMPLE_PRESETS: Preset[] = [
       "isQualityUpgradeUnlocked": true,
       "isQualityUpgradeEnabled": false,
       "isSearchEnabled": false,
-      "selectedModel": "gemini-2.5-flash",
+      "selectedModel": GEMINI_MODEL_3_PRO,
       "userNicknameType": "ANONYMOUS",
       "fixedNickname": "",
       "userReputation": 50
@@ -51,7 +52,7 @@ const EXAMPLE_PRESETS: Preset[] = [
       "isQualityUpgradeUnlocked": true,
       "isQualityUpgradeEnabled": false,
       "isSearchEnabled": false,
-      "selectedModel": "gemini-2.5-flash",
+      "selectedModel": GEMINI_MODEL_3_PRO,
       "userNicknameType": "ANONYMOUS",
       "fixedNickname": "",
       "userReputation": 50
@@ -77,7 +78,7 @@ const EXAMPLE_PRESETS: Preset[] = [
       "isQualityUpgradeUnlocked": true,
       "isQualityUpgradeEnabled": false,
       "isSearchEnabled": false,
-      "selectedModel": "gemini-2.5-flash",
+      "selectedModel": GEMINI_MODEL_3_PRO,
       "userNicknameType": "ANONYMOUS",
       "fixedNickname": "",
       "userReputation": 50
@@ -103,7 +104,7 @@ const EXAMPLE_PRESETS: Preset[] = [
       "isQualityUpgradeUnlocked": true,
       "isQualityUpgradeEnabled": false,
       "isSearchEnabled": false,
-      "selectedModel": "gemini-2.5-flash",
+      "selectedModel": GEMINI_MODEL_3_PRO,
       "userNicknameType": "ANONYMOUS",
       "fixedNickname": "",
       "userReputation": 50
@@ -129,7 +130,7 @@ const EXAMPLE_PRESETS: Preset[] = [
       "isQualityUpgradeUnlocked": true,
       "isQualityUpgradeEnabled": false,
       "isSearchEnabled": false,
-      "selectedModel": "gemini-2.5-flash",
+      "selectedModel": GEMINI_MODEL_3_PRO,
       "userNicknameType": "ANONYMOUS",
       "fixedNickname": "",
       "userReputation": 50
@@ -155,7 +156,7 @@ const EXAMPLE_PRESETS: Preset[] = [
       "isQualityUpgradeUnlocked": true,
       "isQualityUpgradeEnabled": false,
       "isSearchEnabled": false,
-      "selectedModel": "gemini-2.5-flash",
+      "selectedModel": GEMINI_MODEL_3_PRO,
       "userNicknameType": "ANONYMOUS",
       "fixedNickname": "",
       "userReputation": 50
@@ -181,7 +182,7 @@ const EXAMPLE_PRESETS: Preset[] = [
       "isQualityUpgradeUnlocked": true,
       "isQualityUpgradeEnabled": false,
       "isSearchEnabled": false,
-      "selectedModel": "gemini-2.5-flash",
+      "selectedModel": GEMINI_MODEL_3_PRO,
       "userNicknameType": "ANONYMOUS",
       "fixedNickname": "",
       "userReputation": 50
@@ -207,7 +208,7 @@ const EXAMPLE_PRESETS: Preset[] = [
       "isQualityUpgradeUnlocked": true,
       "isQualityUpgradeEnabled": false,
       "isSearchEnabled": false,
-      "selectedModel": "gemini-2.5-flash",
+      "selectedModel": GEMINI_MODEL_3_PRO,
       "userNicknameType": "ANONYMOUS",
       "fixedNickname": "",
       "userReputation": 50
