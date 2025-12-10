@@ -39,9 +39,9 @@ const PostContentRenderer: React.FC<{ content: string }> = ({ content }) => {
                 <div key={`media-${match.index}`} className="relative w-full max-w-xl mx-auto my-8 rounded-xl bg-slate-900 aspect-video flex flex-col items-center justify-center text-white shadow-lg overflow-hidden group select-none ring-1 ring-white/10">
                     {/* Fake Video UI Overlay */}
                     <div className="absolute top-0 left-0 w-full p-4 bg-gradient-to-b from-black/60 to-transparent z-10">
-                        <p className="text-sm font-medium text-white/90 truncate flex items-center">
-                            <i className="fas fa-film mr-2 text-white/70"></i>
-                            {description}
+                        <p className="text-sm font-medium text-white/90 whitespace-pre-wrap break-words flex items-start leading-snug">
+                            <i className="fas fa-film mr-2 text-white/70 mt-0.5 flex-shrink-0"></i>
+                            <span>{description}</span>
                         </p>
                     </div>
                     
@@ -81,8 +81,8 @@ const PostContentRenderer: React.FC<{ content: string }> = ({ content }) => {
                     <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5"></div>
                     <i className="fas fa-image text-5xl mb-3 opacity-30 group-hover:opacity-50 group-hover:scale-110 transition-all duration-300"></i>
                     <span className="text-[10px] font-bold tracking-[0.2em] uppercase opacity-40 mb-2">Image Placeholder</span>
-                    <div className="px-4 py-1.5 bg-white/60 backdrop-blur-sm rounded-full border border-slate-200 shadow-sm z-10 max-w-[90%]">
-                        <p className="text-sm font-medium text-slate-600 text-center truncate">"{description}"</p>
+                    <div className="px-4 py-2 bg-white/60 backdrop-blur-sm rounded-xl border border-slate-200 shadow-sm z-10 max-w-[90%]">
+                        <p className="text-sm font-medium text-slate-600 text-center break-words whitespace-pre-wrap leading-snug">"{description}"</p>
                     </div>
                 </div>
             );
