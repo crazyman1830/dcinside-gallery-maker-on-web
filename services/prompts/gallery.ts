@@ -12,7 +12,7 @@ import {
     MAX_COMMENTS_PER_POST,
 } from '../../constants';
 
-export const GALLERY_PROMPT_VERSION = "2.0.1";
+export const GALLERY_PROMPT_VERSION = "2.0.2";
 
 export const buildGalleryGenerationPrompt = (
     ctx: PromptContext
@@ -81,6 +81,7 @@ ${googleSearchInstruction}
 - **Replies:** Use "@Nickname " to create conversation chains.
 - **Media:** Randomly include (사진: ...), (동영상: ...) in posts. MUST match the Era/Worldview.
 - **Reactions:** Use (콘: ...) in comments for visual reactions.
+- **Immersion Enforcement:** DO NOT include definitions or translations in parentheses (e.g., "BD(Brain Dance)" is banned). Just use "BD".
 
 ${explicitTechBanInstruction}
 

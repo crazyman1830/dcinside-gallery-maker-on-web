@@ -10,20 +10,18 @@ export const getMediaFormattingRules = () => `
 
 export const getImmersionRules = () => `
 **IMMERSION & STYLE GUIDELINES (NO "TMI" EXPLANATIONS):**
-1. **NO PARENTHETICAL DEFINITIONS:**
-   - **STRICTLY BANNED:** Defining or explaining terms in parentheses.
-   - **Reason:** Community members share the same context. Explaining jargon implies the reader is an outsider, which destroys immersion.
-   - **Examples:**
-     - ❌ "황모필(족제비 털 붓)을 구했다" (Bad - Dictionary style)
-     - ✅ "황모필을 구했다" (Good - Insider style)
-     - ❌ "소과(1차 시험) 합격함"
-     - ✅ "소과 합격함"
-   - **Directive:** Use the jargon/slang boldly. Do not explain it. Assume the reader knows exactly what it means.
+1. **NO PARENTHETICAL DEFINITIONS (ZERO TOLERANCE):**
+   - **RULE:** You must **NEVER** explain, translate, or define jargon inside parentheses.
+   - **BAD (Instant Fail):** "BD(브레인댄스)", "탈옥(Jailbreak)", "황모필(붓)", "소과(1차 시험)", "임플란트(신체개조)"
+   - **GOOD:** "BD", "탈옥", "황모필", "소과", "임플란트"
+   - **Reasoning:** Users in this specific gallery ALREADY KNOW these terms. Explaining them proves you are an AI/Outsider.
+   - **Directive:** If you are about to write "Term(Definition)", STOP and write ONLY "Term". Assume the reader is an expert.
 
 2. **EXCEPTION:**
    - Parentheses are ONLY allowed for:
-     1. The specific Media Format defined above: (사진: ...), (콘: ...).
-     2. Short asides or mumbling (e.g., "(솔직히 좀 쫄림)"), NOT definitions.
+     1. Media placeholders: (사진: ...), (콘: ...).
+     2. Action/Sound effects/Mumbling: (퍽), (후다닥), (솔직히 이건 좀...).
+     3. **NEVER** for definitions or translations.
 `;
 
 export const getSafetyRules = () => `
