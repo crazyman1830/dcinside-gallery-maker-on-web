@@ -1,6 +1,6 @@
 
 import { PromptContext } from './context';
-import { getMediaFormattingRules, getSafetyRules } from './rules';
+import { getMediaFormattingRules, getSafetyRules, getImmersionRules } from './rules';
 import {
     generateWorldviewSpecificInstructions,
     generateToxicitySpecificInstructions,
@@ -9,7 +9,7 @@ import {
     generatePlayerStatusInstructions
 } from './instructions';
 
-export const SYSTEM_INSTRUCTION_VERSION = "2.1.1";
+export const SYSTEM_INSTRUCTION_VERSION = "2.2.0";
 
 export const buildSystemInstruction = (
     topic: string,
@@ -30,6 +30,7 @@ export const buildSystemInstruction = (
     const nicknameInstructionDetails = getNicknameInstructionDetails(galleryContext.anonymousNickRatioValue);
     const playerStatusInstructions = generatePlayerStatusInstructions(galleryContext.userProfile);
     const mediaRules = getMediaFormattingRules();
+    const immersionRules = getImmersionRules();
     const safetyRules = getSafetyRules();
 
     return `
@@ -58,6 +59,7 @@ ${nicknameInstructionDetails}
 ${playerStatusInstructions}
 
 ${mediaRules}
+${immersionRules}
 ${safetyRules}
 `;
 };

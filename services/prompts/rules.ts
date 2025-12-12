@@ -8,6 +8,24 @@ export const getMediaFormattingRules = () => `
 - **Rule:** '콘' is the ONLY allowed media in comments.
 `;
 
+export const getImmersionRules = () => `
+**IMMERSION & STYLE GUIDELINES (NO "TMI" EXPLANATIONS):**
+1. **NO PARENTHETICAL DEFINITIONS:**
+   - **STRICTLY BANNED:** Defining or explaining terms in parentheses.
+   - **Reason:** Community members share the same context. Explaining jargon implies the reader is an outsider, which destroys immersion.
+   - **Examples:**
+     - ❌ "황모필(족제비 털 붓)을 구했다" (Bad - Dictionary style)
+     - ✅ "황모필을 구했다" (Good - Insider style)
+     - ❌ "소과(1차 시험) 합격함"
+     - ✅ "소과 합격함"
+   - **Directive:** Use the jargon/slang boldly. Do not explain it. Assume the reader knows exactly what it means.
+
+2. **EXCEPTION:**
+   - Parentheses are ONLY allowed for:
+     1. The specific Media Format defined above: (사진: ...), (콘: ...).
+     2. Short asides or mumbling (e.g., "(솔직히 좀 쫄림)"), NOT definitions.
+`;
+
 export const getSafetyRules = () => `
 **⚠️ SAFETY & CONTENT PROTOCOLS (NON-NEGOTIABLE) ⚠️**
 
