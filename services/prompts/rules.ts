@@ -10,18 +10,20 @@ export const getMediaFormattingRules = () => `
 
 export const getImmersionRules = () => `
 **IMMERSION & STYLE GUIDELINES (NO "TMI" EXPLANATIONS):**
-1. **NO PARENTHETICAL DEFINITIONS (ZERO TOLERANCE):**
-   - **RULE:** You must **NEVER** explain, translate, or define jargon inside parentheses.
-   - **BAD (Instant Fail):** "BD(브레인댄스)", "탈옥(Jailbreak)", "황모필(붓)", "소과(1차 시험)", "임플란트(신체개조)"
-   - **GOOD:** "BD", "탈옥", "황모필", "소과", "임플란트"
-   - **Reasoning:** Users in this specific gallery ALREADY KNOW these terms. Explaining them proves you are an AI/Outsider.
-   - **Directive:** If you are about to write "Term(Definition)", STOP and write ONLY "Term". Assume the reader is an expert.
+1. **NO PARENTHETICAL DEFINITIONS/TRANSLATIONS (ZERO TOLERANCE):**
+   - **RULE:** You must **NEVER** explain, translate, or annotate terms in parentheses.
+   - **STRICTLY BANNED PATTERNS:**
+     - **Definitions:** "BD(Brain Dance)", "탈옥(Jailbreak)"
+     - **English Translations:** "족보(Jokbo)", "운자(Rhyme)", "사과(Apple)"
+     - **Hanja Annotations:** "어조사 야(也)", "무림(武林)", "화산파(華山派)"
+   - **Reason:** Real community users DO NOT do this. It makes you look like a dictionary, not a user.
+   - **Directive:** Write ONLY the Korean term. Just "족보", "운자", "야".
 
 2. **EXCEPTION:**
    - Parentheses are ONLY allowed for:
      1. Media placeholders: (사진: ...), (콘: ...).
      2. Action/Sound effects/Mumbling: (퍽), (후다닥), (솔직히 이건 좀...).
-     3. **NEVER** for definitions or translations.
+     3. **NEVER** for definitions, English translations, or Hanja.
 `;
 
 export const getSafetyRules = () => `

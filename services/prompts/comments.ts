@@ -4,7 +4,7 @@ import { PromptContext } from './context';
 import { generateToxicitySpecificInstructions, generatePlayerStatusInstructions } from './instructions';
 import { resolveUserNickname } from '../../utils/common';
 
-export const COMMENT_PROMPT_VERSION = "2.0.1";
+export const COMMENT_PROMPT_VERSION = "2.0.2";
 
 export const buildCommentGenerationPrompt = (
     userPost: Pick<Post, 'title' | 'author' | 'content'>,
@@ -43,6 +43,7 @@ ${reputationEnforcement}
 - **Acting:** 'Fixed Nick' authors must match their name's vibe.
 - **Interaction:** Use "@Nickname " to reply to other comments in this batch.
 - **Visuals:** Use (콘: ...) for emoji/sticker reactions.
+- **Style:** **NO** parenthetical translations (e.g. "운자(Rhyme)" -> BANNED). **NO** Hanja (e.g. "야(也)" -> BANNED).
 
 **3. OUTPUT SPECIFICATION (STRICT JSON)**
 - JSON Array of objects: [{ "author": "String", "text": "String" }]
@@ -95,6 +96,7 @@ ${reputationEnforcement}
 - Continue the flow naturally.
 - Maintain Toxicity and Worldview settings.
 - Create drama or consensus.
+- **Style:** **NO** parenthetical translations (e.g. "운자(Rhyme)" -> BANNED). **NO** Hanja (e.g. "야(也)" -> BANNED).
 
 **3. OUTPUT SPECIFICATION (STRICT JSON)**
 - JSON Array of objects: [{ "author": "String", "text": "String" }]
