@@ -1,0 +1,260 @@
+[
+  {
+    "id": 0,
+    "author": "user",
+    "payload": {
+      "type": "text",
+      "text": "지금 murim 프리셋으로 생성을 하면 시대배경이 현대로 나오는 버그가 있어. 어딘가 프롬프트 처리가 잘못된거같아. 어디가 문제인지 확인해봐.",
+      "cMarkNode": {}
+    },
+    "createdTimestamp": 1763650488892
+  },
+  {
+    "id": 1,
+    "author": "model",
+    "payload": {
+      "type": "thinking",
+      "text": "**Investigating Murim Error**\n\nI've been trying to figure out why the \"Murim\" preset keeps giving modern settings. It seems the prompt isn't correctly interpreting the Murim era request. I'm focusing on the prompt's parsing logic to see where it might be misdirecting the generated content's context. I'm looking for clues about the era confusion!\n\n\n**Dissecting Worldview Settings**\n\nI'm starting to get into the code now, focusing on the `generateWorldviewSpecificInstructions` function. I am specifically interested in how the Murim worldview is handled. The current implementation in `src/services/prompts/instructions.ts` indicates where the AI instructions are created, and I'm analyzing how the `MURIM` option influences the final prompt construction. The function also takes into consideration what the user defines as a custom worldview text.\n\n\n**Pinpointing Murim Mismatch**\n\nIt seems the `selectedWorldview.value === \"MURIM\"` condition is being triggered, as the code demonstrates how the system should handle it. I'm focusing on the speech style, specifically the mix of old Korean terms and modern slang. This specific detail may be where the disconnect is happening. Perhaps the prompt construction is incorrectly translating the intent of this linguistic blend? I'm re-examining the way the chosen style influences the instruction generation.\n\n\n**Addressing Era Ambiguity**\n\nI'm now zeroing in on the crux of the issue: the AI's interpretation of \"modern internet cynicism\" and \"modern internet slang\" in the Murim context. I suspect the lack of explicit restrictions on technology is causing it to default to a modern setting. It seems the preset is defining atmosphere and speech, but not definitively ruling out modern technology in the world setting definition, which might be critical. The prompt's current structure might be inadvertently inviting a contemporary interpretation by implying that the world includes this type of language, and therefore it must also include modern technology. I'm considering how to explicitly guide the AI away from that assumption.\n\n\n**Refining Murim Specifics**\n\nI'm now focusing on how the \"Gallery\" concept interacts with the \"Murim Era\" request. The core issue is the potential conflict between an ancient setting and a modern online forum. I suspect the instructions aren't strong enough in emphasizing a strictly ancient world. I'm considering adding more constraints to the prompt, clarifying that the gallery should be *about* Murim, but not *in* it. Alternatively, I might separate the concept into two settings: one for a Murim-themed gallery, and another for a roleplay set in the Murim era. The \"Gallery\" instruction might be creating a meta-setting where Murim is a topic, but not the actual world.\n\n\n**Exploring Era Discrepancies**\n\nThe investigation has advanced, and I'm now comparing the `WORLDVIEW_ERA_NOT_APPLICABLE` setting with how the prompts are generated in the gallery component. It seems that the lack of explicit era setting in the `Murim` option, which is set to `WORLDVIEW_ERA_NOT_APPLICABLE`, might be allowing for the undesired modern interpretations. I'm focusing on clarifying how the era choice interacts with the Gallery settings, and trying to solidify that the Murim setting is clearly defined as ancient and distinct from the modern day, as `WORLDVIEW_ERA_NOT_APPLICABLE` is not explicitly making this association.\n\n\n**Analyzing Murim's Omission**\n\nI've discovered the `LabelForTitlePrompt` is empty for Murim, leading to a generic title. Now, I'm re-examining the Murim instructions in `src/services/prompts/instructions.ts`. It seems the instruction lacks explicit constraints about technology, only referencing \"Martial Arts World.\" The AI might be misinterpreting \"Murim\" in the \"Gallery\" context, as the prompt is not clearly specifying a technology level. I'm focusing on adding an explicit declaration for technology to guide the AI more accurately.\n\n\n**Specifying Murim's Era**\n\nI'm now clarifying the key issue: the AI incorrectly perceives the setting. I plan to define the physical world explicitly as Ancient/Medieval, adding constraints about technology, and maintaining the online meta-context. I'm updating `src/services/prompts/instructions.ts` to include explicit era and technology restrictions for \"Murim\" and \"Fantasy\" presets. For \"Murim,\" I'm adding a specific setting definition excluding modern tech. For \"Fantasy\", I'll add the same restrictions. I'm also ensuring the JSON in `src/presets/murim.json` is properly updated.\n\n\n**Analyzing Presets and Logic**\n\nI've examined the `useGalleryForm.ts` file, and I've reviewed the `src/presets/murim.json` file. It seems the issue persists despite my previous updates. I am focusing on the interaction of the state initialization. I will further analyze the code to pinpoint where the modern interpretation is creeping in. I suspect that the era is not being explicitly set when the preset is selected. I am going to double-check how the selected worldview is influencing the era settings.\n\n\n**Fixing Prompt Clarity**\n\nI'm strengthening the Murim prompt in `src/services/prompts/instructions.ts` to explicitly exclude modern technology and clarify the era. I'm focusing on providing more concrete setting and technology definitions to guide the AI more effectively. This will hopefully ensure that the AI understands the desired ancient/medieval context.\n\n\n**Finalizing Worldview Adjustments**\n\nI'm now implementing the explicit era and technology restrictions for Fantasy, mirroring the approach taken with Murim. My focus is on ensuring consistency across both worldviews. I'm carefully reviewing the relevant code sections, paying close attention to the prompt construction process and the interaction between the presets and the era settings, to eliminate any remaining ambiguities that might lead to unexpected results. I hope this will resolve the core issue in a satisfactory manner.\n\n\n**Implementing Era Clarity**\n\nMy focus has shifted to the `src/services/prompts/instructions.ts` file, where I'm working to explicitly define the \"Murim\" era. The current goal is to ensure the AI understands the setting's ancient and non-modern context. I am adding the era constraint directly into the prompt construction. I have also added explicit restrictions about the tech level, which I'm hoping will stop the modern interpretations of \"Murim\" in the generated content.\n\n\n**Revising Contextual Prompts**\n\nI'm now focusing on the prompt adjustments, particularly the impact of the preset topic \"무공\". I'm trying to determine how the AI interprets a mixed scenario of an ancient setting with a modern custom topic. I'm testing the `generateWorldviewSpecificInstructions` to understand if a modern term overrides the \"무공\" context.\n\n\n**Finalizing Contextual Refinement**\n\nI'm now focusing on integrating the explicit era definition directly into the `generateInstructions` function for a consistent application. I've reevaluated the logic that handles era settings, custom worldviews, and the influence of the \"무공\" (martial skill) term. My current aim is to minimize potential inconsistencies. I'm carefully reviewing the order in which these elements are processed and the impact of each variable on the final prompt to ensure there are no unintended modern interpretations.\n\n\n**Reconciling Preset Conflicts**\n\nI'm now integrating the `FANTASY` constraints, ensuring a consistent approach to defining era and technology across presets. The goal is to eliminate potential conflicts and maintain clarity in the prompt's context. I am reviewing the prompt construction and the interaction between the presets and the era settings. I'm focusing on the integration of the \"Hypocritical Elites,\" \"Edgy Rebels,\" and \"Cultists,\" each with unique labels, to the `FANTASY` setting.\n\n\n**Fixing Prompt Clarity**\n\nI'm now strengthening the Murim prompt in `src/services/prompts/instructions.ts` to explicitly exclude modern technology and clarify the era. I'm focusing on providing more concrete setting and technology definitions to guide the AI more effectively. This will hopefully ensure that the AI understands the desired ancient/medieval context.\n\n\n**Strengthening Prompt Constraints**\n\nI'm strengthening the Murim prompt in `src/services/prompts/instructions.ts` to explicitly exclude modern technology and clarify the era, and verified `WORLDVIEW_OPTIONS`. The fix is focused on a more precise technology level definition. I'm aiming for consistent behavior.\n\n\n**Verifying Preset Logic**\n\nI'm now cross-referencing the `WORLDVIEW_OPTIONS` with the current implementation. It seems that the `MURIM` value matches what's used in the logic, which is good. I'm carefully reviewing the preset interaction and trying to identify any remaining inconsistencies. My primary concern is that even with the explicit constraints, the AI could still be misinterpreting the era. I'm focusing on strengthening the phrasing to eliminate any potential ambiguity.\n\n\n**Refining Era Definition**\n\nMy attention is now on the `src/services/prompts/instructions.ts` file. I am working to define the \"Murim\" era to ensure the AI creates Ancient/Medieval world, not modern. I am adding the era constraint directly into the prompt construction. This should prevent modern interpretations in the output. I also made sure that the `WORLDVIEW_OPTIONS` had the correct setting.\n\n\n**Adding Era Specificity**\n\nI'm currently working to explicitly define the \"Murim\" era. I am concentrating on the tech level and the context definition in the prompt. I'm adding era constraints within the prompt to enforce an ancient/medieval setting. It's crucial for the AI to understand that this world doesn't contain any modern technology.\n\n\n**Analyzing Presets and Era**\n\nI've been analyzing the logic within the `generateInstructions` function, specifically how presets influence era settings. I'm focusing on clarifying how `WORLDVIEW_OPTIONS` interacts with preset selections. I'm adding era-specific constraints directly into the prompt to reinforce the \"Murim\" era. The core goal is to explicitly define the intended ancient/medieval context and prevent any modern interpretations.\n\n\n**Finalizing Preset Integration**\n\nMy efforts are now concentrated on integrating all these elements to refine the Fantasy setting in `src/services/prompts/instructions.ts`. I've added constraints for elves, dwarves, and adventurers alongside the established framework. I'm focusing on ensuring clear communication using magic, and I'm adding era-specific constraints directly into the prompt to ensure the AI creates a Medieval Fantasy world without modern technology. The goal is a consistent and engaging experience.\n\n\n**Clarifying Worldview Settings**\n\nI'm now integrating the `FANTASY` constraints, ensuring a consistent approach to defining era and technology across presets. The goal is to eliminate potential conflicts and maintain clarity in the prompt's context. I am reviewing the prompt construction and the interaction between the presets and the era settings, and ensuring elves, dwarves, and adventurers alongside the established framework.\n\n\n**Adjusting Preset Integration**\n\nI'm now integrating the `FANTASY` constraints, ensuring a consistent approach to defining era and technology across presets. I am reviewing prompt construction, and the interaction between presets and era. I'm focusing on \"Hypocritical Elites,\" \"Edgy Rebels,\" and \"Cultists\" with unique labels, to the `FANTASY` setting.\n\n\n**Verifying Code Consistency**\n\nI'm verifying that the file imports remain correct following these modifications. The `UserProfile` import is indeed used later in `generateUserProfileInstructions`, and I've ensured all other imported types and functions are still properly referenced within the code. I've re-examined the code, confirming that all required arguments for functions are being used.\n\n\n**Validating Code References**\n\nI'm currently focused on verifying that the `UserProfile` import is correctly used within the relevant functions, and that all required arguments are being supplied for those functions. Specifically, I'm confirming that `generatePlayerStatusInstructions` is properly handling the `userProfile` argument. The code seems sound, and I'm confident in the overall plan.\n\n\n",
+      "cMarkNode": {}
+    },
+    "createdTimestamp": 1763650488892,
+    "doneTimestamp": 1763650579945
+  },
+  {
+    "id": 2,
+    "author": "model",
+    "payload": {
+      "type": "text",
+      "text": "무협(Murim) 및 판타지(Fantasy) 세계관 선택 시, 시대 배경이 현대로 설정되는 문제를 수정하겠습니다.\n\n문제 원인은 AI가 \"인터넷 커뮤니티 말투\"라는 지시를 \"현대 기술 문명(스마트폰, 컴퓨터 등)이 존재하는 세계\"로 해석하기 때문입니다. 이를 해결하기 위해, 해당 세계관에서는 현대 기술을 금지하고 마법이나 내공을 통한 가상의 통신망(전음 등)을 사용한다는 구체적인 설정을 프롬프트에 추가했습니다.\n\n다음은 수정된 파일 내용입니다.\n\n",
+      "cMarkNode": {}
+    },
+    "createdTimestamp": 1763650579945,
+    "doneTimestamp": 1763650579945
+  },
+  {
+    "id": 3,
+    "author": "model",
+    "payload": {
+      "type": "generationTable",
+      "entries": [
+        {
+          "path": "src/services/prompts/instructions.ts",
+          "generationType": 1,
+          "isDone": true,
+          "description": "Strengthened prompt instructions for MURIM and FANTASY worldviews to explicitly enforce ancient/medieval settings and forbid modern technology."
+        }
+      ]
+    },
+    "createdTimestamp": 1763650580454,
+    "doneTimestamp": 1763650609476
+  },
+  {
+    "id": 4,
+    "author": "user",
+    "payload": {
+      "type": "text",
+      "text": "그렇게치면 갤러리가 존재한다는거 자체가 설정이 이상해지는데, 어떻게 처리하는게 좋을까?",
+      "cMarkNode": {}
+    },
+    "createdTimestamp": 1763651068288
+  },
+  {
+    "id": 5,
+    "author": "model",
+    "payload": {
+      "type": "thinking",
+      "text": "**Examining Preset Conflicts**\n\nOkay, I've been digging into the \"Murim\" preset issue. The root seems to be that the app's inherent \"internet community\" context is overriding the desired setting. My last update was to `src/services/prompts/instructions`, and I'm now exploring how to isolate the preset's intended setting better. I'm considering using more specific prompt injection techniques to ensure the \"Murim\" context takes precedence.\n\n\n**Reframing the Contradiction**\n\nI've just hit a snag.  Enforcing the ancient setting creates a new paradox: how can there be a forum in a world without internet? The \"Gallery\" itself is now a conflict. To solve this, I'm proposing a lore-friendly solution: frame the forum as a mental network or public notice board, \"translated\" into a familiar format.  This way, the setting can remain intact without illogical technological anachronisms.\n\n\n**Conceptualizing a Magical Network**\n\nI'm now zeroing in on the most promising solution: reframing the communication method.  Instead of outright removing modern technology, I'm adapting the forum concept to fit within the setting's established rules. For Murim, this is the Jeon-eum, a spiritual network. Fantasy gets a \"magic web\" or similar. I'll need to modify the \"generateWorldviewSpecificInstructions\" function in  `src/services/prompts/instructions.ts` to implement this. My plan is to add explicit instructions regarding the network and the posting, rather than modern devices.\n\n\n**Defining Technical Boundaries**\n\nI am now focusing on the implications of the \"mental network\" concept. I want to flesh out how this works within the preset. The specific concern, as expressed in the code, is the weirdness of a gallery in a tech-free world. To be clear, it needs to be made explicit in `src/services/prompts/instructions.ts` that the \"forum\" metaphor, and the \"gallery,\" are translated through this Jeon-eum network, not through a modern internet connection. This should resolve the user's issue.\n\n\n**Adapting Communication to Context**\n\nThe user's concerns about the setting's realism have led me to refine the \"translation layer\" further. Rather than just a generic \"magical network,\" I'm now developing more setting-specific and character-centric instructions. Specifically, I'm going to introduce the idea that these forum posts aren't just magically transmitted, but are experienced as if the viewer *is* receiving specific in-world mental transmissions, like a visual depiction, or spiritual message.  The user's setting should feel more internally consistent this way.\n\n\n**Updating Instructions for Context**\n\nI'm now revising the instructions in `src/services/prompts/instructions.ts` to tackle the \"Interface\" issue. For Murim, I'll specify a \"Murim Alliance Spirit Network\" with \"Public Spirit Broadcasts\" and \"Reply Transmissions.\" No phones: the AI must describe \"sending a thought\" or \"channeling qi to post.\" Similarly, for Fantasy, the \"Gallery\" becomes a \"Mana Web\" or \"Crystal Ball Network.\" For pre-historic settings, I'll suggest \"Cave Wall\" or \"Town Square Shouting.\"\n\n\n**Resolving Technical Implementation**\n\nI'm making progress. I am going to adjust the instructions to specify \"No modern tech\". The new solution is to have the AI describe the interactions using the setting's concepts: Qi signatures instead of IP addresses, transmitting thoughts instead of typing. I'm working in `src/services/prompts/instructions.ts` to implement this. I also plan to make corresponding changes in `src/services/prompts/gallery.ts`, although that may not be necessary.\n\n\n**Defining The Communication**\n\nThe current focus is solidifying the communication method for each setting. For Murim, I'm defining the \"Jeon-eum Network\" as the core communication medium in `src/services/prompts/instructions.ts`. Users \"send Qi\" or \"project their thoughts\" to participate in a spiritual broadcast. Fantasy utilizes a \"Mana Web\" for the same function, and Prehistoric settings employ visual representations. No modern technology will be allowed in any of the settings to prevent paradox. I am now working on these specifications.\n\n\n**Clarifying the Interface**\n\nI'm now revising the instructions in `src/services/prompts/instructions.ts` to fully address the last detail.  Instead of just relying on the Jeon-eum, I'm specifying how the visual experience works, and how responses are created and viewed.  For Murim, the user's mind *experiences* mental transmissions and spiritual projections of messages; the response is transmitted as \"thought-Qi-imagery.\"  I'll ensure the AI avoids references to websites or modern interfaces in all cases. This also applies to the other settings.\n\n\n**Prioritizing Context-Specific Metaphors**\n\nI'm now focusing on setting-specific analogies to clarify the interaction. For Murim, think \"sending Qi\" instead of \"typing.\" The goal is to move beyond generic \"spiritual network\" descriptors and introduce more concrete action-based language. This approach extends to Fantasy and Prehistoric settings, ensuring the AI consistently describes actions in terms of the world's established rules and technologies. I am now working on these specifications.\n\n\n**Integrating Setting Specific Styles**\n\nI'm now integrating the \"cave wall\" analogy for prehistoric settings and also adapting the prompt to have `Mix archaic... slang` for all settings, to preserve style, but the new instructions also ensure that the setting specific logic is preserved for the \"Paradox Solution\" I proposed. The \"Gallery\" should be represented consistently with the new logic, so no unexpected issues arise in response generation. I am now working on these specifications in the code.\n\n\n",
+      "cMarkNode": {}
+    },
+    "createdTimestamp": 1763651068288,
+    "doneTimestamp": 1763651126305
+  },
+  {
+    "id": 6,
+    "author": "model",
+    "payload": {
+      "type": "text",
+      "text": "무협이나 판타지 세계관에서 '인터넷 커뮤니티'라는 형식이 존재하는 것 자체가 모순(Paradox)이기 때문에, AI가 혼란을 느껴 현대로 회귀하려는 경향이 있습니다.\n\n이 문제를 해결하기 위해 **\"기술은 없지만, 마법이나 내공을 통해 인터넷과 유사한 기능을 수행하는 설정\"**을 프롬프트에 명시적으로 주입하여 개연성을 부여하겠습니다. 이를 \"매체(Medium) 변환 레이어\"라고 부르며, 다음과 같이 설정을 보강합니다.\n\n1.  **무협**: 갤러리를 **'전음망(무림맹 정신 네트워크)'**이나 **'옥패(마법 태블릿)'**로 정의하여, 스마트폰 없이도 글을 쓰는 행위를 정당화합니다.\n2.  **판타지**: **'마나 웹(수정구 통신망)'** 설정을 추가합니다.\n3.  **선사시대**: **'부족 공용 동굴 벽화'**나 **'광장 외침'**으로 정의합니다.\n\n이렇게 하면 AI가 \"스마트폰\"을 묘사하지 않으면서도 \"게시글 작성\"이라는 행위를 자연스럽게 수행할 수 있습니다.\n\n",
+      "cMarkNode": {}
+    },
+    "createdTimestamp": 1763651126305,
+    "doneTimestamp": 1763651126368
+  },
+  {
+    "id": 7,
+    "author": "model",
+    "payload": {
+      "type": "generationTable",
+      "entries": [
+        {
+          "path": "src/services/prompts/instructions.ts",
+          "generationType": 1,
+          "isDone": true,
+          "description": "각 세계관별로 '갤러리(커뮤니티)'가 존재할 수 있는 개연성(설정적 장치)을 추가하여 현대 문명으로 회귀하는 현상 방지"
+        }
+      ]
+    },
+    "createdTimestamp": 1763651126420,
+    "doneTimestamp": 1763651153931
+  },
+  {
+    "id": 8,
+    "author": "user",
+    "payload": {
+      "type": "text",
+      "text": "음 갤러리의 존재에 대한 설정 부분은 그냥 적당히 뭉개고 넘어가자. 여기에 특정 설정을 넣어버리면, 갤러리라는 것 자체에 대한 몰입도가 떨어질 수 있어.",
+      "cMarkNode": {}
+    },
+    "createdTimestamp": 1763651466809
+  },
+  {
+    "id": 9,
+    "author": "model",
+    "payload": {
+      "type": "thinking",
+      "text": "**Revising World-Building**\n\nI'm currently revising the world-building concept. The user's feedback highlighting the need for specific \"mediums\" for different settings is crucial. I'm experimenting with ways to justify the presence of a \"gallery\" (forum) within these unique contexts. For instance, the \"Spirit Network\" for Murim settings and the \"Arcane Web\" for fantasy realms seem promising.\n\n\n**Rethinking the Interface**\n\nI've been wrestling with the \"medium\" problem. The previous instructions were too prescriptive, forcing unnatural explanations for the gallery's existence. My goal now is to remove these detailed justifications, allowing the AI to treat the gallery as a meta-concept. The focus will be on ensuring the *content* itself remains period-appropriate, with no anachronistic technology or references. The user can then better focus on their creative content. The specific \"Paradox Solution\" sections will be removed from `src/services/prompts/instructions.ts`.\n\n\n**Streamlining the Approach**\n\nI'm now streamlining the \"medium\" concept. My strategy involves retaining the strict tech ban within the narrative but adding a meta-instruction. This meta-instruction will treat the Gallery format as a genre convention, like a web novel, removing the need for contrived in-world explanations. The focus will be on the content adhering to the historical setting, not describing how characters post. I've been experimenting with new prompt structures. For the Murim section, I've eliminated the cringe-inducing explanations, focusing instead on defining the setting and tech, and then instructing the AI to write within the Gallery convention without explaining the method.\n\n\n**Refining Genre Conventions**\n\nI'm now revising my approach to the \"gallery\" format. Instead of detailing specific in-world methods, I'm focusing on treating the gallery as a genre convention, like a web novel format. This removes the need for contrived explanations like \"Arcane Web\" or \"Magic Internet.\" The emphasis is now on ensuring the content aligns with the historical and technological constraints of each setting. The goal is to let the AI focus on believable interactions within each unique world.\n\n\n**Adjusting Abstraction Levels**\n\nI'm now simplifying the \"medium\" concept even further. My approach involves removing any direct references to specific in-world methods, like cave walls or spirit networks, as that's too restrictive. The focus shifts to instructing the AI to handle the Gallery as a meta-narrative format that the user accepts. I'm prioritizing the overall tone and content appropriate for the defined setting, without trying to explain how a forum fits, so it's a seamless experience. This applies to Murim, Fantasy, and the Era definitions.\n\n\n**Generating the Framework**\n\nI'm now generating the initial code. The user's directive to avoid references to physical devices is key, meaning I need to focus on pure conversation within the framework. I'm prioritizing natural dialogue and interaction, without technological intrusions. This will enhance the overall immersive experience for the user.\n\n\n",
+      "cMarkNode": {}
+    },
+    "createdTimestamp": 1763651466809,
+    "doneTimestamp": 1763651498765
+  },
+  {
+    "id": 10,
+    "author": "model",
+    "payload": {
+      "type": "text",
+      "text": "알겠습니다. 갤러리의 존재 방식(전음망, 수정구 등)을 구체적으로 정의하려다 보니 오히려 \"무협 세계관에 웬 태블릿?\" 같은 위화감이 생기는 것 같습니다.\n\n사용자님의 피드백대로, **\"갤러리라는 형식은 시스템적 허용(장르적 관습)으로 두고, 구체적인 통신 수단에 대한 묘사는 뭉개는(생략하는)\"** 방향으로 수정하겠습니다.\n\n대신, **현대 문물(스마트폰, 자동차 등)에 대한 직접적인 언급만 금지**하여 시대적 배경이 깨지지 않도록 처리하겠습니다.\n\n# Updated files:\n\n## src/services/prompts/instructions.ts\n\n-   **무협(Murim) / 판타지(Fantasy)**: '전음망', '마나 웹' 등 작위적인 통신 설정 제거.\n-   **시대별 설정(Era)**: '동굴 벽화', '파피루스' 등 구체적인 매체(Medium) 정의 제거.\n-   **공통 지침**: 현대 기술(스마트폰, 컴퓨터)의 사용 묘사만 금지하고, 글을 쓰고 읽는 행위 자체는 자연스러운 '개념'으로 처리하도록 지시.\n\n",
+      "cMarkNode": {}
+    },
+    "createdTimestamp": 1763651498765,
+    "doneTimestamp": 1763651498854
+  },
+  {
+    "id": 11,
+    "author": "model",
+    "payload": {
+      "type": "generationTable",
+      "entries": [
+        {
+          "path": "src/services/prompts/instructions.ts",
+          "generationType": 1,
+          "isDone": true,
+          "description": "Remove specific 'medium' definitions (spirit network, arcane web, etc.) to avoid immersion breaking, while keeping the ban on modern tech references."
+        }
+      ]
+    },
+    "createdTimestamp": 1763651501893,
+    "doneTimestamp": 1763651529768
+  },
+  {
+    "id": 12,
+    "author": "user",
+    "payload": {
+      "type": "text",
+      "text": "여전히 murim 프리셋에서 현대 배경이 나오고있어. 프롬프트 수정 확인해봐.",
+      "cMarkNode": {}
+    },
+    "createdTimestamp": 1763911584953
+  },
+  {
+    "id": 13,
+    "author": "model",
+    "payload": {
+      "type": "thinking",
+      "text": "**Fixing Murim's Modern Trap**\n\nI'm revisiting the 'Murim' preset, which stubbornly clings to modern settings. It seems my prior fixes didn't stick, so I'll be meticulously examining `src/services/prompts/instructions.ts`. I also need to check `src/services/prompts/gallery.ts` as well as any other supporting services that might be unintentionally influencing its output. Hopefully, I'll identify and squash this annoying bug soon.\n\n\n**Refining Murim Instructions**\n\nI've been digging deeper into the Murim prompt generation. Examining the `generateWorldviewSpecificInstructions` function in `src/services/prompts/instructions.ts`, I see the core instructions. It explicitly defines the setting, technology limitations, and addresses the \"Gallery\" concept to avoid modern references. I'm focusing on ensuring these directives are consistently applied throughout the system. I'll need to explore how this is rendered.\n\n\n**Defining Murim Speech**\n\nI'm now fully immersed in the core stylistic elements. The atmosphere should be this jarring juxtaposition of old and new: ancient honor codes clashing with internet cynicism. For speech, I'm integrating specific archaic Korean terms with modern slang. I'm focusing on those three factions: Jeongpa, Sapa, and Magyo. Their distinct personalities will be reflected in this language.\n\n\n**Separating Setting Styles**\n\nI'm now separating the 'visual setting' from the 'communication style'. My current focus is avoiding any modern bias. The \"Gallery\" is a key culprit; its default \"General daily chatter\" and potential Google searches are a problem. I'm double-checking the `murim.json` preset to ensure `googleSearchInstruction` is truly disabled. I'm planning to revisit `buildGalleryGenerationPrompt` to ensure the core prompt does not leak modernity into the setting. The \"meta-narrative device\" approach needs significant reinforcement.\n\n\n**Clarifying Murim Reality**\n\nI've been battling the inherent modern bias within the AI. It's clear that the combination of \"Internet Slang\" and the \"Gallery Format\" is overpowering my efforts to establish an ancient setting. I'm now focusing on a more explicit solution. The AI needs a stronger directive in `instructions.ts` to anchor the content to a strictly ancient reality, even within the context of a forum. This includes clarifying that even \"posting\" happens within an ancient physical space. I need to update `generateWorldviewSpecificInstructions` in particular. Also, I'll review `system.ts` to see if the \"Gallery Engine\" preamble is contributing to the problem. I'll need to strengthen the \"Visual/Physical Reality\" constraint.\n\n\n**Solidifying Ancient Context**\n\nI'm making a more explicit effort to separate communication style from technological level. I need to reinforce the idea that \"Internet Slang\" is a translation for archaic speech, not a sign of modern tech. I'll add negative constraints to ban modern references. I'll modify the instructions to describe the physical reality of the setting to include a sect, a cave, etc. I'm focusing on strengthening the current meta-narrative, to ensure the forum does not break the immersion into the ancient world.\n\n\n**Strengthening Murim Immersion**\n\nI'm now focusing on making the ancient setting absolute. The core of the problem seems to be the AI's tendency to slip modern items and concepts into the setting. To counter this, I'm reinforcing the meta-narrative; the \"forum\" format is a stylized representation of ancient communication methods, not a portal to the modern world. I'm adding a *very* strict rule: No modern items whatsoever. Posts should *describe* ancient scenes, not modern ones. I'm double-checking `rules.ts` to see that it matches what I envision.\n\n\n**Resolving Murim Media**\n\nI'm now zeroing in on the \"Video\" and \"Photo\" media prompts, as they are a frequent problem. I'm considering how to manage these modern technological concepts within the ancient setting. I think the user's suggestion to accept the metadata as an anachronism while ensuring the descriptions remain ancient is the best. So, the \"Video\" tag remains, but the content *within* it describes scenes with no modern references. The key is in the description! I'm adding instructions on how to describe the media, to include phrases like \"magic recording\" or \"memory projection\".\n\n\n**Asserting Ancient Murim**\n\nThe focus has shifted to the 'Webnovel' context and the recurring problem of modern objects appearing, especially within the \"Status Window\" framework. My analysis of `src/services/prompts/instructions.ts` and `src/services/prompts/gallery.ts` reveals potential vulnerabilities, particularly around `eraLabelForTitlePrompt`'s behavior and the `jsonFormattingInstruction`. I'm now implementing the strictest possible constraints against modern technology across the system, aiming to solidify the ancient setting. I'm prioritizing the elimination of modern items from the text.\n\n\n**Asserting Era Control**\n\nI'm now zeroing in on the interaction between `selectedWorldview` and `selectedWorldviewEra`. I've realized that the current logic is sound, so the issue must be prompt strength. I'm focusing on strengthening the ancient setting within the `generateWorldviewSpecificInstructions` function. Specifically, I'll be adding even stricter constraints on modern technology. The goal is to make the instructions for `MURIM` unbreakable.\n\n\n**Strengthening Era Instructions**\n\nI'm now revising `src/services/prompts/instructions.ts` to enforce era accuracy. For `MURIM`, I'm adding strict rules: modern items are *banned*, and media descriptions must align with the era. Visuals are key, so I'm specifying descriptions of pagodas, dirt roads, and traditional items like swords. The `FANTASY` block will get similar updates. I'll also add a general \"Era Consistency\" rule within `src/services/prompts/rules.ts` to ensure these principles are applied across media.\n\n\n**Defining Physical Murim**\n\nThe focus has shifted to the `MURIM` setting's physical reality. I'm aiming for absolute clarity in establishing an ancient world. I'm reinforcing the ban on modern tech and concepts in the instructions, specifying the physical objects present: pagodas, dirt roads, tea sets, jade, and alcohol jars. I'm also ensuring the meta-narrative maintains the \"forum\" format, even while describing purely ancient events. I need to make sure `rules.ts` reflects this.\n\n\n**Asserting Murim Reality**\n\nI'm now zeroing in on the interaction between the `topic` and `worldview`, especially in `buildGalleryGenerationPrompt`. The AI might be struggling if a modern topic like \"Bitcoin\" is given with a Murim setting. I'm focusing on strengthening the AI's ability to adapt such modern concepts into the ancient setting, ensuring descriptions are strictly era-appropriate. This includes prioritizing the `googleSearchInstruction` override within `buildGalleryGenerationPrompt` when a conflict arises. The AI *must* prioritize the era.\n\n\n**Refining Media Descriptions**\n\nI'm now revising how media descriptions are generated within the ancient setting. I've pinpointed `getMediaFormattingRules` in `rules.ts` as the key. I will modify the function to accept a `worldviewValue` to define the description. This will enable me to replace modern terminology like \"Video\" with era-appropriate phrasing, like \"Memory Projection,\" to solidify the ancient immersion. I'll test this thoroughly to make sure descriptions are not anachronistic.\n\n\n**Reinforcing Murim Restrictions**\n\nI'm now zeroing in on media descriptions, particularly in `src/services/prompts/instructions.ts` and `rules.ts`. The goal is era-appropriate media generation in `MURIM`. I've added a strict anachronism check rule in `rules.ts`, and am modifying `getMediaFormattingRules` to accept a `worldview` parameter. It will use this to enforce era-specific descriptions, such as replacing \"Video\" with \"Memory Projection\". I'm also fortifying the `MURIM` instructions in `instructions.ts` to ban modern references. I'm focusing on ensuring media descriptions are *inside* the ancient world, even with the modern video tag, to strengthen the immersion.\n\n\n**Strengthening Era Alignment**\n\nI'm now revising my instructions to address the remaining issues. I've focused on creating stricter bans on modern concepts, and more specific descriptions of the setting's visuals. I'm focusing on ensuring media descriptions remain solidly within the ancient setting, even when using the \"Video\" tag. I'm prioritizing the physical objects, such as pagodas, dirt roads, tea sets and jade. My priority is to prevent modern concepts seeping into the Murim world. I'll test these updates immediately.\n\n\n**Analyzing Prompt Integration**\n\nI'm now investigating potential discrepancies between the system and gallery prompts, specifically concerning the injection of worldview-specific instructions. While `worldviewSpecificInstructions` are properly integrated into the system-level prompts, a closer inspection reveals that the `gallery.ts` prompt might unintentionally bypass these instructions.  It appears the `buildGalleryGenerationPrompt` function, which sends the googleSearchInstruction and generates the gallery title, doesn't utilize this critical injection. This is a potential vulnerability and I'm currently focusing on reinforcing the worldview-specific directives within the Gallery generation process, to keep it consistent with the overall settings.\n\n\n**Verifying Gallery Consistency**\n\nI'm now zeroing in on the interaction between `instructions.ts` and `gallery.ts`. It appears the recent changes to instructions are sound, the core issue now lies in consistently applying these instructions across the board. I'll meticulously check the prompt generation process, paying special attention to how worldview-specific rules are integrated within the Gallery context to prevent any backsliding into anachronistic output. The core problem appears to be strength, and I'll focus on boosting the strength of the ancient era description.\n\n\n**Strengthening Murim Reality**\n\nI'm now revising my instructions to explicitly exclude any acknowledgment of the underlying forum technology within the Murim world. I've rephrased the directive to focus on characters communicating naturally without modern tech. This is a critical step in preserving the ancient setting. I'm checking the changes within `instructions.ts` and `gallery.ts` to ensure consistency.\n\n\nI've been examining the prompts for their era consistency in the `MURIM` setting, specifically targeting the \"make it feel alive\" directive. I'm focusing on ensuring media usage is era-appropriate. The current goal is to ensure that the descriptions remain solidly within the ancient setting, even when referring to modern concepts. I'll test these updates immediately.\n\n\n",
+      "cMarkNode": {},
+      "expanded": false
+    },
+    "createdTimestamp": 1763911584953,
+    "doneTimestamp": 1763911666062
+  },
+  {
+    "id": 14,
+    "author": "model",
+    "payload": {
+      "type": "text",
+      "text": "To resolve the issue where the \"Murim\" (and Fantasy) presets generate modern backgrounds (like modern cities, phones, etc.) despite being set in an ancient era, I will update the prompt generation logic.\n\nThe main fix involves:\n1.  **Strengthening Worldview Constraints**: In `instructions.ts`, I will explicitly define the **physical reality** of the Murim/Fantasy worlds (wooden buildings, horses, swords) and add a **Strict Prohibition** list against modern technology (phones, cars, electricity).\n2.  **Clarifying the \"Gallery\" Meta-Concept**: As requested, I will instruct the AI to treat the gallery format as a UI/Meta-layer for the user, meaning characters within the world do **not** physically hold smartphones or type on keyboards, preventing \"modern era\" hallucinations.\n\n### 1. `src/services/prompts/instructions.ts`\n\n",
+      "cMarkNode": {}
+    },
+    "createdTimestamp": 1763911666062,
+    "doneTimestamp": 1763911666114
+  },
+  {
+    "id": 15,
+    "author": "model",
+    "payload": {
+      "type": "generationTable",
+      "entries": [
+        {
+          "path": "src/services/prompts/instructions.ts",
+          "generationType": 1,
+          "isDone": true,
+          "description": "Strengthen Murim and Fantasy worldview instructions to enforce ancient settings and strictly ban modern technology."
+        },
+        {
+          "path": "src/services/prompts/gallery.ts",
+          "generationType": 1,
+          "isDone": true,
+          "description": "Ensure media usage guideline respects the defined worldview to prevent modern media hallucinations."
+        }
+      ]
+    },
+    "createdTimestamp": 1763911669017,
+    "doneTimestamp": 1763911697260
+  },
+  {
+    "id": 16,
+    "author": "user",
+    "payload": {
+      "type": "text",
+      "text": "여전히 현대 배경으로 진행이 되고있어. 테스트해보니 프리셋을 사용하지 않더라도 세계관에 상관없이 현대배경이 자꾸 출력되는거같은데 뭐가 문제일까?",
+      "cMarkNode": {}
+    },
+    "createdTimestamp": 1763914524208
+  },
+  {
+    "id": 17,
+    "author": "model",
+    "payload": {
+      "type": "thinking",
+      "text": "**Fixing Worldbuilding Inconsistency**\n\nI'm wrestling with a persistent issue: the world seems stubbornly stuck in modernity. Even when I deliberately choose a fantasy or martial arts setting, the outputs still default to modern elements. It's frustrating. I need to figure out why the chosen worldviews aren't taking hold and what parameters are conflicting. I need to ensure my choices actually translate into the generated content.\n\n\n**Investigating Prompt Construction**\n\nI'm now diving into the code, specifically `src/services/prompts/instructions.ts` and `src/services/prompts/gallery.ts`, to trace the flow of worldview instructions. The `generateWorldviewSpecificInstructions` function is a key area of focus, especially its handling of the \"MURIM\" worldview. The instructions are seemingly clear on the historical setting, but I'm still seeing modern elements creeping in. I suspect the \"Gallery\" concept's interpretation by the model is the core of the problem.\n\n\n**Refining Worldview Distinction**\n\nI've realized I'm confusing the interface, which is modern, with the actual world content. I need to explicitly separate the medium from the message. Checking `src/services/prompts/gallery.ts`, I'm noticing a potential issue. The \"DC Inside Gallery\" concept might be unintentionally triggering modern elements in the output. I need to see if the model's interpretation of \"Gallery\" is overriding the worldview instructions, causing the modern backgrounds problem.\n\n\n**Enforcing Historical Accuracy**\n\nI'm now implementing concrete changes. I'll inject the worldview constraint directly into `gallery.ts` as a negative prompt, hoping to prevent modern elements. Furthermore, I'll beef up the \"Time Period\" and \"Technology Level\" directives in `instructions.ts`, adding a \"LORE ENFORCEMENT\" section. Finally, I'll refine the media instructions in `gallery.ts`, explicitly banning modern terms and insisting on era-appropriate descriptions if the format is allowed to be modern, hoping to clarify the ancient setting.\n\n\n**Addressing Temporal Ambiguity**\n\nI'm now zeroing in on the \"Internet Forum\" element itself. The problem might not be the model's understanding of the world, but its inherent association of forums with modern technology. My solution is to explicitly decouple the forum format from the world's temporal setting. I'll modify the instructions to emphasize that the text is simply a transcription of the character's thoughts, formatted as a post. Crucially, the characters *don't* know they're on a forum.  I'll also implement a global constraint to ban modern elements.\n\n\n**Revising Gallery Logic**\n\nI've realized a potential conflict in the gallery prompt generation. The 'eraLabelForTitlePrompt' is bypassed for \"MURIM,\" potentially allowing the model to default to modern interpretations. I'm exploring the `generateWorldviewSpecificInstructions` function in `instructions.ts`, specifically the logic controlling the gallery formatting. I'm going to alter the instruction from \"Gallery\" to \"CONCEPTUAL TRANSLATION\", to better guide the model. To strictly reinforce pre-industrial settings, I'm adding an absolute rule prohibiting modern technology in the instructions for all worldviews that are not explicitly modern.\n\n\n**Clarifying Physical Restrictions**\n\nI'm now revising the 'Physical Reality' section within `instructions.ts` to explicitly bar modern imagery. The goal is to reinforce the system's focus on ink paintings and physical objects. I'm also ensuring the crucial visual restrictions are prominently included in the system instructions. Examining `gallery.ts`, I've noticed the Worldview instruction and other instructions get incorporated via `buildSystemInstruction`, so I'll prioritize revising that and its use of `googleSearchInstruction` and `jsonFormattingInstruction`. My main goal is to strengthen the enforcement of the pre-industrial setting.\n\n\n**Overriding Model Priors**\n\nI'm now focusing on explicitly counteracting the model's inclination towards modern interpretations, particularly with the \"DC Inside Gallery.\" I will inject strong negative constraints into both the system instruction *and* the user prompt to eliminate modern elements. In the \"Gallery\" instructions, I'll append a worldview reminder to ensure historical consistency. Furthermore, I'll strengthen the `buildSystemInstruction` to prioritize pre-industrial settings as the default, and revise the `generateWorldviewSpecificInstructions` function to address the prior problem.\n\n\n**Clarifying Narrative Structure**\n\nI'm now separating the interface from the narrative more clearly. I'm adding specific instructions to differentiate the user-facing forum format from the in-world reality. The characters exist in an ancient setting, so they shouldn't be associated with modern tech. I'm hoping this will resolve the modern background issue.\n\n\n**Improving Temporal Fidelity**\n\nI'm now focusing on a specific part of the instructions to address the remaining inconsistencies. My plan involves refining the wording in `instructions.ts`. Instead of saying the interface *is* modern, I'll emphasize it's a *translation* of ancient material. I will also incorporate an absolute rule prohibiting modern technology in all pre-industrial worldviews. This is to force the model to render the desired historical setting and narrative flow.\n\n\n**Strengthening Historical Enforcement**\n\nI'm now integrating explicit 'Security Checks' to maintain pre-industrial settings. I'll ask for model self-verification: \"Did this exist in the 12th century? If not, exclude it.\" Specifically, I'm modifying `gallery.ts` to add a \"SECURITY CHECK\" directive for Murim/Fantasy/Prehistoric worldviews, forcing content review for modern terms, demanding regeneration if found. Finally, I'm refining `instructions.ts` to emphasize the ancient/medieval East Asian setting for Murim, and reinforcing physical restrictions.\n\n\n**Reiterating Temporal Focus**\n\nThe key is in explicitly stating the ancient setting's core rules and prohibitions in `instructions.ts`. I have added directives within `instructions.ts` to strictly forbid any modern elements or context. I am also making sure that the worldview constraints are being added to the user task prompt in `gallery.ts` along with the system prompt, so that the model gets the message. I also explicitly reiterate my focus on pre-industrial settings as the default to the model.\n\n\n**Enhancing Temporal Constraints**\n\nI've discovered the `eraLabelForTitlePrompt` is empty for Murim, creating ambiguity. I'm focusing on strengthening the era constraint. I'm modifying `instructions.ts` to return `eraConstraintMessage` specifically for the prompt, and I'll revisit `generateWorldviewSpecificInstructions` to refine the 'Physical Reality' instructions. I need to make the constraints explicit for the desired historical context to prevent the modern encroachment I'm seeing.\n\n\n**Updating Era Restrictions**\n\nI'm now focusing on a more assertive approach to ban modern tech. I'm expanding the \"STRICT PROHIBITION\" section in `instructions.ts`, making it detailed and placing it at the end of the worldview block. In `gallery.ts`, I'm dynamically injecting a \"Modern Tech Ban\" string into the prompt if the chosen worldview requires it, thus further ensuring historical consistency.\n\n\n",
+      "cMarkNode": {}
+    },
+    "createdTimestamp": 1763914524208,
+    "doneTimestamp": 1763914582575
+  },
+  {
+    "id": 18,
+    "author": "model",
+    "payload": {
+      "type": "text",
+      "text": "To address the persistent issue of modern backgrounds appearing in ancient/fantasy settings (like Murim), I will reinforce the prompts in two key areas:\n\n1.  **`src/services/prompts/instructions.ts`**: Refine the worldview instructions to be explicitly \"Pre-Industrial\" and reframe the \"Gallery\" concept. Instead of describing it as a \"modern interface for ancient characters\" (which confuses the model), I will instruct the AI to **\"Translate ancient interactions into a forum format\"** while strictly banning modern physical descriptions.\n2.  **`src/services/prompts/gallery.ts`**: Inject a high-priority **\"Era Compliance Check\"** directly into the user prompt. This ensures the model checks its own output for anachronisms (phones, cars, etc.) right before generating the JSON.\n\n# Updated files:\n\n",
+      "cMarkNode": {}
+    },
+    "createdTimestamp": 1763914582575,
+    "doneTimestamp": 1763914582575
+  },
+  {
+    "id": 19,
+    "author": "model",
+    "payload": {
+      "type": "generationTable",
+      "entries": [
+        {
+          "path": "src/services/prompts/instructions.ts",
+          "generationType": 1,
+          "isDone": true,
+          "description": "Strengthened worldview instructions for Murim/Fantasy to strictly ban modern tech and reframe the meta-narrative."
+        },
+        {
+          "path": "src/services/prompts/gallery.ts",
+          "generationType": 1,
+          "isDone": true,
+          "description": "Injected explicit Modern Tech Ban directly into the user prompt if the worldview requires it."
+        }
+      ]
+    },
+    "createdTimestamp": 1763914584449,
+    "doneTimestamp": 1763914617630
+  }
+]

@@ -1,8 +1,8 @@
 
 // --- Models ---
-export const GEMINI_MODEL_TEXT = 'gemini-2.5-flash';
-export const GEMINI_MODEL_PRO = 'gemini-2.5-pro';
-export const GEMINI_MODEL_3_PRO = 'gemini-3-pro-preview';
+export const GEMINI_MODEL_TEXT = 'gemini-3-flash-preview';
+export const GEMINI_MODEL_PRO = 'gemini-3.1-flash-lite-preview';
+export const GEMINI_MODEL_3_PRO = 'gemini-3.1-pro-preview';
 
 // --- Gallery Config ---
 export const DEFAULT_ERROR_MESSAGE = '응답을 처리하는 중 오류가 발생했습니다. 재시도를 해주시고, 지속적으로 발생 시, 개발자에게 알려주시면 감사하겠습니다.';

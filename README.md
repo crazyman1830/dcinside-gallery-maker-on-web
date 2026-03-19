@@ -97,7 +97,7 @@ npm run dev
 *   **Frontend**: React 19, TypeScript
 *   **Build Tool**: Vite
 *   **Styling**: Tailwind CSS
-*   **AI Model**: Google Gemini API (`gemini-2.5-flash`, `gemini-2.5-pro`, `gemini-3.0-pro`)
+*   **AI Model**: Google Gemini API (`gemini-3-flash-preview`, `gemini-3.1-flash-lite-preview`, `gemini-3.1-pro-preview`)
     *   SDK: `@google/genai`
 
 ## 📂 프로젝트 구조

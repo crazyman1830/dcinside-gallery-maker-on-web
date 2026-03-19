@@ -1,0 +1,46 @@
+[
+  {
+    "id": 92,
+    "author": "user",
+    "payload": {
+      "type": "text",
+      "text": "사용자의 피드백을 반영하여, AI가 금지된 표현(일베 말투 등)을 수정할 때 수정 과정을 텍스트에 노출하지 않고 **내부적으로 조용히 처리(Silent Correction)**하도록 프롬프트 규칙을 강화해줘.",
+      "cMarkNode": {}
+    },
+    "createdTimestamp": 1764071106712
+  },
+  {
+    "id": 93,
+    "author": "model",
+    "payload": {
+      "type": "thinking",
+      "text": "**Implementing Safety Measures**\n\nI'm currently working on incorporating a robust system to identify and filter out prohibited \"Ilbe\" speech patterns within the AI's outputs. My priority is to develop a highly accurate detection mechanism that minimizes false positives while effectively blocking the offensive language. I'm exploring different techniques to ensure compliance with the strict guidelines.\n\n\n**Focusing on Silent Corrections**\n\nI've been refining the prompt rules to ensure the AI silently corrects any \"Ilbe\" speech patterns without revealing the correction process. My main focus is on modifying the existing safety rules to enable internal processing of these adjustments. I'm exploring the `getSafetyRules` function in `services/prompts/rules.ts` to implement the required adjustments.\n\n\n**Adjusting the Filtering Criteria**\n\nI've been meticulously refining the \"Ilbe\" filtering rules. I'm prioritizing the removal of the indiscriminate use of \"~노,\" allowing it only in specific dialectal contexts or wh-questions. The use of \"~이기\" and derogatory political slang is strictly prohibited, overriding existing toxicity settings. To make my output safer, I'm working to implement silent corrections for banned speech patterns, like changing \"~노\" endings to a proper Korean dialect without revealing the logic.\n\n\n**Enforcing Natural Output**\n\nI'm now fully focused on ensuring all corrections, specifically like the change from \"쫄리노\" to \"쫄리냐\", are completely seamless. My goal is for the AI's output to read as if the offending term was never even considered. I'm prioritizing silent, internal processing within the existing safety rules to achieve this. The output needs to be utterly natural and fluent.\n\n\n**Reinforcing the Rules**\n\nI'm now diving deeper into the system instructions to make the \"no meta-commentary\" rule even stronger.  Examining `services/prompts/system.ts`, I see how the safety rules are incorporated, making it the perfect place to enforce this more explicitly. I'll modify `services/prompts/rules.ts` to add a specific example of what to avoid to really hammer the point home. My aim is to make the \"silent correction\" aspect absolutely clear and unwavering.\n\n\n**Improving Output Fluency**\n\nI'm now completely focused on making sure all the corrections are seamless and unnoticeable to the user, particularly with \"Ilbe\" filtering. My goal is for the responses to read naturally, as if the offensive language was never even part of the AI's internal process. I've been giving some attention to the `services/prompts/rules.ts` file, and I'm updating the function for the updated guidelines.\n\n\n**Strengthening the Safeguards**\n\nI'm now implementing the strictest possible measures against specific political hate speech. I'm ensuring this prohibition completely overrides existing toxicity settings, which means the AI will be able to handle other forms of aggression, but will be absolutely forbidden from using any banned political terms. I'm focusing on integrating these rules and making sure that the AI always silently corrects any instance of that language. The output must be completely natural and free of any meta-commentary, even in the event of a violation.\n\n\n**Adding Self-Harm Prevention**\n\nI'm now integrating a crucial update to the safety protocols.  I'm adding specific rules to detect and silently correct any instances of self-harm related language. I'm focusing on ensuring these rules are prominently placed in the system instructions and override any existing toxicity settings. The goal is to make sure the AI avoids this type of content. I'm prioritizing adding a clear instruction in the \"DIRECTIVES\" section of `services/prompts/system.ts`.\n\n\n**Defining Strict Adherence**\n\nI'm currently working to modify the rules within `services/prompts/rules.ts` to ensure strict adherence to safety protocols and the crucial silent correction principle. The goal is to reinforce that all content generation must comply without exception. I'm prioritizing adjustments to ensure all \"Ilbe\" speech patterns are corrected internally and the output maintains natural flow, irrespective of toxicity settings.\n\n\n**Strengthening Safety Rules**\n\nI'm currently working to modify the rules within `services/prompts/rules.ts` to ensure strict adherence to safety protocols, particularly the principle of silent correction. My aim is to make certain that all generated content fully complies without exception, while maintaining natural flow. I'm focusing specifically on adjustments to ensure any \"Ilbe\" speech patterns are corrected internally.\n\n\n**Refining Safety Protocols**\n\nI'm now fully immersed in refining the safety protocols, especially regarding the 'Ilbe' speech patterns. I'm rigorously updating the rules in `services/prompts/rules.ts` to ensure that all generated content strictly adheres to these guidelines, prioritizing the \"silent correction\" principle. My efforts are concentrated on making the necessary adjustments to ensure the output remains natural and fluent, no matter what.\n\n\n**Implementing Zero Tolerance**\n\nI'm now implementing the strictest safety measures regarding meta-commentary, which should never appear. I'm modifying the system instructions, particularly within the directives section of `services/prompts/system.ts`. I want to ensure that the output is utterly natural and completely avoids any indication of correction, regardless of any internal processing.\n\n\n**Reinforcing the Guidelines**\n\nI'm currently revising the `services/prompts/system.ts` file to reinforce the directives, ensuring no meta-commentary at any stage. My key focus is making these guidelines explicit in the system instructions. I'm prioritizing adjustments to ensure that the output remains utterly natural, and that any correction processes are completely hidden. The goal is to make the instructions unambiguous and to avoid any hint of correction.\n\n\n**Enhancing Rule Precision**\n\nI'm currently revising the `services/prompts/rules.ts` file to precisely define acceptable outputs, focusing on the strict adherence to the safety protocols and silent correction. I'm prioritizing clarity and specificity in the instructions to ensure the output is utterly natural and fluent, without any meta-commentary. The goal is to make the rules more robust.\n\n\n**Improving Error Handling**\n\nI'm now focusing on strengthening the error handling within the safety rules.  I'm modifying `services/prompts/system.ts` to provide a clear fallback mechanism when corrections are impossible. The goal is to ensure the AI gracefully handles any unforeseen situations and always maintains a natural, user-friendly output without revealing the internal processing. I'm exploring the implications for the overall output quality.\n\n\n",
+      "cMarkNode": {}
+    },
+    "createdTimestamp": 1764071106712,
+    "doneTimestamp": 1764071195810
+  },
+  {
+    "id": 94,
+    "author": "model",
+    "payload": {
+      "type": "generationTable",
+      "entries": [
+        {
+          "path": "services/prompts/rules.ts",
+          "generationType": 1,
+          "isDone": true,
+          "description": "Strengthened safety rules to explicitly enforce silent correction of banned speech patterns (e.g., Ilbe slang) without generating any meta-commentary or explanation text."
+        },
+        {
+          "path": "services/prompts/system.ts",
+          "generationType": 1,
+          "isDone": true,
+          "description": "Added explicit directive for silent correction and safety protocol adherence to the system instructions."
+        }
+      ]
+    },
+    "createdTimestamp": 1764071195810,
+    "doneTimestamp": 1764071200425
+  }
+]
