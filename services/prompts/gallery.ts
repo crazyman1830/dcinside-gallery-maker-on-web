@@ -11,8 +11,9 @@ import {
     MIN_COMMENTS_PER_POST,
     MAX_COMMENTS_PER_POST,
 } from '../../constants';
+import { resolveUserNickname } from '../../utils/common';
 
-export const GALLERY_PROMPT_VERSION = "2.0.3";
+export const GALLERY_PROMPT_VERSION = "2.0.4";
 
 export const buildGalleryGenerationPrompt = (
     ctx: PromptContext
@@ -24,6 +25,10 @@ export const buildGalleryGenerationPrompt = (
     );
     const { selectedToxicity } = generateToxicitySpecificInstructions(ctx.toxicityLevelValue);
     const toxicityNameForTitle = selectedToxicity.nameForTitle;
+    
+    const currentUserNick = resolveUserNickname(ctx.userProfile);
+    const userIp = ctx.userProfile?.nicknameType === 'ANONYMOUS' ? ctx.userProfile.ip : null;
+    const authorBanInstruction = `- **AUTHOR BAN (CRITICAL):** You MUST NEVER use "나" or "(글쓴이)" as an author name.${currentUserNick ? ` You MUST ALSO NEVER use exactly "${currentUserNick}" (which is the Active User).` : ''}${userIp ? ` If generating anonymous users, their IP addresses MUST NEVER contain "${userIp}".` : ''} Generate completely separate fictional identities for all posts and comments.`;
 
     let googleSearchInstruction = "";
     let jsonFormattingInstruction = "";
@@ -81,6 +86,7 @@ ${googleSearchInstruction}
 - **Replies:** Use "@Nickname " to create conversation chains.
 - **Media:** Randomly include (사진: ...), (동영상: ...) in posts. MUST match the Era/Worldview.
 - **Reactions:** Use (콘: ...) in comments for visual reactions.
+${authorBanInstruction}
 - **Immersion Enforcement:** 
   - **NO DEFINITIONS:** "BD(Brain Dance)" -> "BD"
   - **NO TRANSLATIONS:** "족보(Jokbo)" -> "족보"

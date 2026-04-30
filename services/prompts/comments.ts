@@ -4,7 +4,7 @@ import { PromptContext } from './context';
 import { generateToxicitySpecificInstructions, generatePlayerStatusInstructions } from './instructions';
 import { resolveUserNickname } from '../../utils/common';
 
-export const COMMENT_PROMPT_VERSION = "2.0.2";
+export const COMMENT_PROMPT_VERSION = "2.0.3";
 
 export const buildCommentGenerationPrompt = (
     userPost: Pick<Post, 'title' | 'author' | 'content'>,
@@ -16,8 +16,11 @@ export const buildCommentGenerationPrompt = (
     
     // Check if the post author is the Current User
     const currentUserNick = resolveUserNickname(galleryContext.userProfile);
+    const userIp = galleryContext.userProfile?.nicknameType === 'ANONYMOUS' ? galleryContext.userProfile.ip : null;
     const isCurrentUserPost = userPost.author === currentUserNick;
     
+    const authorBanInstruction = `- **AUTHOR BAN (CRITICAL):** You MUST NEVER use "나" or "(글쓴이)" as an author name.${currentUserNick ? ` You MUST ALSO NEVER use exactly "${currentUserNick}" (which is the Active User).` : ''}${userIp ? ` If generating anonymous users, their IP addresses MUST NEVER contain "${userIp}".` : ''} Generate completely separate fictional identities.`;
+
     let reputationEnforcement = "";
     if (isCurrentUserPost && galleryContext.userProfile) {
         const statusInstructions = generatePlayerStatusInstructions(galleryContext.userProfile);
@@ -43,6 +46,7 @@ ${reputationEnforcement}
 - **Acting:** 'Fixed Nick' authors must match their name's vibe.
 - **Interaction:** Use "@Nickname " to reply to other comments in this batch.
 - **Visuals:** Use (콘: ...) for emoji/sticker reactions.
+${authorBanInstruction}
 - **Style:** **NO** parenthetical translations (e.g. "운자(Rhyme)" -> BANNED). **NO** Hanja (e.g. "야(也)" -> BANNED).
 
 **3. OUTPUT SPECIFICATION (STRICT JSON)**
@@ -70,7 +74,10 @@ export const buildFollowUpCommentPrompt = (
     // Check if the LAST comment was made by the User
     const lastComment = existingComments[existingComments.length - 1];
     const currentUserNick = resolveUserNickname(galleryContext.userProfile);
+    const userIp = galleryContext.userProfile?.nicknameType === 'ANONYMOUS' ? galleryContext.userProfile.ip : null;
     const isLastCommentByUser = lastComment && lastComment.author === currentUserNick;
+
+    const authorBanInstruction = `- **AUTHOR BAN (CRITICAL):** You MUST NEVER use "나" or "(글쓴이)" as an author name.${currentUserNick ? ` You MUST ALSO NEVER use exactly "${currentUserNick}" (which is the Active User).` : ''}${userIp ? ` If generating anonymous users, their IP addresses MUST NEVER contain "${userIp}".` : ''} Generate completely separate fictional identities.`;
 
     let reputationEnforcement = "";
     if (isLastCommentByUser && galleryContext.userProfile) {
@@ -96,6 +103,7 @@ ${reputationEnforcement}
 - Continue the flow naturally.
 - Maintain Toxicity and Worldview settings.
 - Create drama or consensus.
+${authorBanInstruction}
 - **Style:** **NO** parenthetical translations (e.g. "운자(Rhyme)" -> BANNED). **NO** Hanja (e.g. "야(也)" -> BANNED).
 
 **3. OUTPUT SPECIFICATION (STRICT JSON)**
