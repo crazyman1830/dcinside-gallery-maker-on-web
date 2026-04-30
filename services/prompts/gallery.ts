@@ -35,9 +35,10 @@ export const buildGalleryGenerationPrompt = (
 
     if (ctx.useSearch) {
         googleSearchInstruction = `
-[TOOL USE]
-- Use Google Search to find REAL trending news/memes about "${ctx.topic}".
-- Integrate findings into post content to enhance realism.
+[TOOL USE & EXCLUSIVE SEARCH FOCUS (CRITICAL)]
+- Use Google Search to find REAL trending news/memes about "${ctx.topic}" and "${ctx.discussionContext || ''}".
+- **CRITICAL DIRECTIVE:** Because search is enabled, you MUST construct all posts and comments **EXCLUSIVELY** based on the real-time facts, events, and data retrieved from the search results. 
+- Do NOT mix in your outdated prior knowledge or hallucinate past events. If you retrieved information about recent trends, the characters in the gallery MUST only talk about those recent trends, to prevent sync issues. Let the search results completely dictate the narrative.
         `;
 
         jsonFormattingInstruction = `

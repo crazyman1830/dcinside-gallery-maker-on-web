@@ -7,6 +7,32 @@ const STORAGE_KEY = 'user_presets';
 // --- Example Presets Data ---
 const EXAMPLE_PRESETS: Preset[] = [
   {
+    "id": "preset-example-macho",
+    "name": "[예시] 현대 - 상남자 갤러리",
+    "settings": {
+      "topic": "상남자 특",
+      "discussionContext": "진정한 상남자의 행동양식, 여자들이 반하는 상남자 마인드 등 얼토당토않은 밈 공유",
+      "selectedWorldview": "NONE",
+      "customWorldviewText": "",
+      "selectedWorldviewEra": "CONTEMPORARY",
+      "selectedToxicityLevel": "MEDIUM",
+      "selectedAnonymousNickRatio": "BALANCED",
+      "userSpecies": "인간",
+      "userAffiliation": "알파메일 호소인",
+      "isManualGenderRatio": true,
+      "manualMalePercentage": 100,
+      "isManualAgeRange": false,
+      "manualSelectedAgeGroups": [],
+      "isQualityUpgradeUnlocked": true,
+      "isQualityUpgradeEnabled": false,
+      "isSearchEnabled": false,
+      "selectedModel": GEMINI_MODEL_3_PRO,
+      "userNicknameType": "ANONYMOUS",
+      "fixedNickname": "",
+      "userReputation": 50
+    }
+  },
+  {
     "id": "preset-example-earth",
     "name": "[예시] 지구 - 탈모 갤러리",
     "settings": {
