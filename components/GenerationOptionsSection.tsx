@@ -90,7 +90,7 @@ export const GenerationOptionsSection: React.FC<GenerationOptionsSectionProps> =
 
           <div className="mt-6">
             <label htmlFor="discussionContext" className={`${labelClass} text-blue-800`}>
-              현재 떡밥 (논의 중인 내용) <span className="font-normal text-slate-400 text-xs ml-1">({discussionContext.length}/50)</span>
+              현재 떡밥 (논의 중인 내용) <span className="font-normal text-slate-400 text-xs ml-1">({discussionContext.length}/500)</span>
               <InfoTooltip text="게시물들의 중심 화제입니다. 구체적인 사건을 입력하면 더 재미있는 결과가 나옵니다." />
             </label>
             <textarea 
@@ -100,7 +100,7 @@ export const GenerationOptionsSection: React.FC<GenerationOptionsSectionProps> =
                 placeholder="예: 이번 업데이트 밸런스 패치 망함, 길고양이 밥주기 찬반 논란 등" 
                 className={`${inputClass} bg-white border-blue-200 focus:border-blue-500 resize-y min-h-[80px] ${errors.discussionContext ? 'border-red-500 bg-red-50' : ''}`}
                 rows={2} 
-                maxLength={50} 
+                maxLength={500} 
             />
             {errors.discussionContext && <p className="text-xs text-red-500 mt-1.5 font-medium"><i className="fas fa-exclamation-circle mr-1"></i>{errors.discussionContext}</p>}
           </div>

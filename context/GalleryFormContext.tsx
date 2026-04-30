@@ -160,7 +160,7 @@ export const GalleryFormProvider: React.FC<ProviderProps> = ({ children, initial
             else if (customWorldviewText.length > MAX_CUSTOM_WORLDVIEW_LENGTH) newErrors.customWorldviewText = `세계관 설명은 ${MAX_CUSTOM_WORLDVIEW_LENGTH}자 이내로 입력해주세요.`;
         }
 
-        if (discussionContext.length > 50) newErrors.discussionContext = '현재 논의중인 내용은 50자 이내로 입력해주세요.';
+        if (discussionContext.length > 500) newErrors.discussionContext = '현재 논의중인 내용은 500자 이내로 입력해주세요.';
         if (userSpecies.length > MAX_USER_SPECIES_LENGTH) newErrors.userSpecies = `사용자 종족은 ${MAX_USER_SPECIES_LENGTH}자 이내로 입력해주세요.`;
         if (userAffiliation.length > MAX_USER_AFFILIATION_LENGTH) newErrors.userAffiliation = `사용자 소속은 ${MAX_USER_AFFILIATION_LENGTH}자 이내로 입력해주세요.`;
         
