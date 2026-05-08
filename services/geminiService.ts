@@ -68,22 +68,21 @@ const commentSchema: Schema = {
     required: ["author", "text"]
 };
 
-const postSchema: Schema = {
+const postOnlySchema: Schema = {
     type: Type.OBJECT,
     properties: {
         title: { type: Type.STRING, description: "Title of the post." },
         author: { type: Type.STRING, description: "Nickname of the post author." },
-        content: { type: Type.STRING, description: "Body content of the post. May include Image/Video descriptions." },
-        comments: { type: Type.ARRAY, items: commentSchema, description: "List of comments on this post." }
+        content: { type: Type.STRING, description: "Body content of the post. May include Image/Video descriptions." }
     },
-    required: ["title", "author", "content", "comments"]
+    required: ["title", "author", "content"]
 };
 
 const galleryResponseSchema: Schema = {
     type: Type.OBJECT,
     properties: {
         galleryTitle: { type: Type.STRING, description: "The creative title of the generated gallery." },
-        posts: { type: Type.ARRAY, items: postSchema, description: "List of posts in the gallery." }
+        posts: { type: Type.ARRAY, items: postOnlySchema, description: "List of posts in the gallery." }
     },
     required: ["galleryTitle", "posts"]
 };

@@ -51,10 +51,7 @@ Structure:
     {
       "title": "String",
       "author": "String",
-      "content": "String (include media descriptions)",
-      "comments": [
-          { "author": "String", "text": "String" }
-      ]
+      "content": "String (include media descriptions)"
     }
   ]
 }
@@ -66,7 +63,7 @@ Structure:
         explicitTechBanInstruction = `
 **ERA COMPLIANCE & VOCABULARY FILTER (STRICT)**
 - **Constraints:** ${eraConstraints}
-- **Action:** Scan all generated titles, content, and comments. If a term violates the constraints (e.g., using "Truck" in Medieval), REPLACE it with a context-appropriate term (e.g., "Wagon").
+- **Action:** Scan all generated titles and content. If a term violates the constraints (e.g., using "Truck" in Medieval), REPLACE it with a context-appropriate term (e.g., "Wagon").
 - **Directive:** Do not explain the replacement in the text, just use the correct era-specific term.
         `;
     }
@@ -80,13 +77,11 @@ Structure:
 ${googleSearchInstruction}
 
 **2. REQUIREMENTS & GUIDELINES**
-- **Requirements:** Generate EXACTLY ${NUMBER_OF_POSTS} posts.
-- **Post 1 (Best Post):** High quality, funny or controversial. ${MIN_COMMENTS_PER_BEST_POST}-${MAX_COMMENTS_PER_BEST_POST} comments.
-- **Posts 2-${NUMBER_OF_POSTS}:** Standard posts. ${MIN_COMMENTS_PER_POST}-${MAX_COMMENTS_PER_POST} comments.
+- **Requirements:** Generate EXACTLY ${NUMBER_OF_POSTS} posts. DO NOT GENERATE COMMENTS.
+- **Post 1 (Best Post):** High quality, funny or controversial. Make it feel like a very popular, highly-discussed post.
+- **Posts 2-${NUMBER_OF_POSTS}:** Standard posts.
 - **Title Field:** "[${ctx.topic}] 갤러리 - ${worldviewLabelKoreanPart}${eraLabelForTitlePrompt ? ` (${eraLabelForTitlePrompt})` : ''} - [${toxicityNameForTitle}]"
-- **Replies:** Use "@Nickname " to create conversation chains.
 - **Media:** Randomly include (사진: ...), (동영상: ...) in posts. MUST match the Era/Worldview.
-- **Reactions:** Use (콘: ...) in comments for visual reactions.
 ${authorBanInstruction}
 - **Immersion Enforcement:** 
   - **NO DEFINITIONS:** "BD(Brain Dance)" -> "BD"

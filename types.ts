@@ -56,7 +56,7 @@ export interface GeminiPostContent {
   title: string;
   author: string;
   content: string;
-  comments: GeminiCommentContent[]; 
+  comments?: GeminiCommentContent[]; 
 }
 
 export interface GeminiResponseData {

@@ -103,7 +103,7 @@ export const createGalleryStreamed = async (
         }
         
         // This mapping and processing logic is moved from the original geminiService function
-        let postsData: Post[] = geminiData.posts.slice(0, NUMBER_OF_POSTS).map((geminiPost: GeminiPostContent, postIndex: number) => {
+        let postsData: Post[] = await Promise.all(geminiData.posts.slice(0, NUMBER_OF_POSTS).map(async (geminiPost: GeminiPostContent, postIndex: number) => {
             const isBest = postIndex === 0;
             const postId = `post-${Date.now()}-${postIndex}`;
             const postAuthor = geminiPost.author || `익명_${postIndex + 1}`;
@@ -112,21 +112,25 @@ export const createGalleryStreamed = async (
             const minCommentsForThisPost = isBest ? MIN_COMMENTS_PER_BEST_POST : MIN_COMMENTS_PER_POST;
             const maxCommentsForThisPost = isBest ? MAX_COMMENTS_PER_BEST_POST : MAX_COMMENTS_PER_POST;
 
-            let aiProvidedComments: GeminiCommentContent[] = (geminiPost.comments || []);
-            let finalPostComments: Comment[] = [];
+            // Step 2 & 3: Evaluate and generate comments concurrently for this post
+            const [evaluationMetrics, aiGeneratedComments] = await Promise.all([
+                evaluateUserPostContent(geminiPost, params, params.selectedModel),
+                generateCommentsForUserPost(geminiPost, params, minCommentsForThisPost, maxCommentsForThisPost, params.selectedModel)
+            ]);
 
-            aiProvidedComments.slice(0, maxCommentsForThisPost).forEach((aiComment, index) => {
+            const finalPostComments: Comment[] = aiGeneratedComments.map((comment, index) => {
                 const commentId = `comment-${postId}-${index}-${Date.now()}`;
-                const processedCommentAuthor = ensureUniqueCommentAuthor(aiComment.author, postAuthor, index);
+                const processedCommentAuthor = ensureUniqueCommentAuthor(comment.author, postAuthor, index);
 
-                finalPostComments.push({
-                    id: commentId, author: processedCommentAuthor, text: aiComment.text || "흠...",
-                    timestamp: getCurrentTimestamp(), // AI comments generated "now" relatively
+                return {
+                    id: commentId, author: processedCommentAuthor, text: comment.text || "흠...",
+                    timestamp: getCurrentTimestamp(),
                     recommendations: Math.floor(Math.random() * (isBest ? 50 : 15)),
                     nonRecommendations: Math.floor(Math.random() * (isBest ? 5 : 5)),
-                });
+                };
             });
 
+            // Fallback for minimum comments if AI fails to generate enough
             while (finalPostComments.length < minCommentsForThisPost) {
                 const idx = finalPostComments.length;
                 finalPostComments.push({
@@ -139,12 +143,12 @@ export const createGalleryStreamed = async (
             return {
                 id: postId, isBestPost: isBest, title: geminiPost.title || `"${params.topic}" 주제 포스트 #${postIndex + 1}${isBest ? " (🔥인기글🔥)" : ""}`,
                 author: postAuthor, timestamp: postTimestamp, content: (geminiPost.content || "이 게시물에는 아직 내용이 없습니다."),
-                views: isBest ? Math.floor(Math.random() * 15000) + 5000 : Math.floor(Math.random() * 2000) + 50,
-                recommendations: isBest ? Math.floor(Math.random() * 500) + 200 : Math.floor(Math.random() * 49) + 0,
-                nonRecommendations: isBest ? Math.floor(Math.random() * 30) + 5 : Math.floor(Math.random() * 20) + 0,
+                views: evaluationMetrics.suggestedViews,
+                recommendations: evaluationMetrics.suggestedRecommendations,
+                nonRecommendations: evaluationMetrics.suggestedNonRecommendations,
                 comments: finalPostComments,
             };
-        });
+        }));
 
         while (postsData.length < NUMBER_OF_POSTS) {
             const postIndex = postsData.length;
