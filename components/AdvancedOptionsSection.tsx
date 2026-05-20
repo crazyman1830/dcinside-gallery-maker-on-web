@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { GEMINI_MODEL_TEXT, GEMINI_MODEL_PRO, GEMINI_MODEL_3_PRO } from '../constants';
+import { GEMINI_MODEL_TEXT, GEMINI_MODEL_PRO, GEMINI_MODEL_3_PRO, GEMINI_MODEL_3_5_FLASH } from '../constants';
 
 interface AdvancedOptionsSectionProps {
   isQualityUpgradeUnlocked: boolean;
@@ -34,6 +34,7 @@ export const AdvancedOptionsSection: React.FC<AdvancedOptionsSectionProps> = ({
             >
                 <option value={GEMINI_MODEL_TEXT}>Gemini 3 Flash Preview (빠름, 가벼움)</option>
                 <option value={GEMINI_MODEL_PRO}>Gemini 3.1 Flash Lite Preview (가벼움)</option>
+                <option value={GEMINI_MODEL_3_5_FLASH}>Gemini 3.5 Flash (가장 빠름)</option>
                 <option value={GEMINI_MODEL_3_PRO}>Gemini 3.1 Pro Preview (최신, 강력함, 추천)</option>
             </select>
             <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-slate-500">

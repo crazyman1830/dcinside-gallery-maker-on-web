@@ -18,6 +18,7 @@ import {
     POST_AUTHOR_PREFIX,
     NUMBER_OF_POSTS,
     DEFAULT_ERROR_MESSAGE,
+    GEMINI_MODEL_TEXT,
 } from '../constants';
 
 export const isApiKeyAvailable = isGeminiApiKeyAvailable;
@@ -114,7 +115,7 @@ export const createGalleryStreamed = async (
 
             // Step 2 & 3: Evaluate and generate comments concurrently for this post
             const [evaluationMetrics, aiGeneratedComments] = await Promise.all([
-                evaluateUserPostContent(geminiPost, params, params.selectedModel),
+                evaluateUserPostContent(geminiPost, params, GEMINI_MODEL_TEXT),
                 generateCommentsForUserPost(geminiPost, params, minCommentsForThisPost, maxCommentsForThisPost, params.selectedModel)
             ]);
 
@@ -125,8 +126,8 @@ export const createGalleryStreamed = async (
                 return {
                     id: commentId, author: processedCommentAuthor, text: comment.text || "흠...",
                     timestamp: getCurrentTimestamp(),
-                    recommendations: Math.floor(Math.random() * (isBest ? 50 : 15)),
-                    nonRecommendations: Math.floor(Math.random() * (isBest ? 5 : 5)),
+                    recommendations: comment.recommendations ?? Math.floor(Math.random() * (isBest ? 50 : 15)),
+                    nonRecommendations: comment.nonRecommendations ?? Math.floor(Math.random() * (isBest ? 5 : 5)),
                 };
             });
 
@@ -204,7 +205,7 @@ export const addUserPost = async (
     const evaluationMetrics = await evaluateUserPostContent(
         newPostData,
         galleryContext,
-        selectedModel
+        GEMINI_MODEL_TEXT
     );
 
     const isNewUserPostBest = evaluationMetrics.suggestedRecommendations >= 50;
@@ -222,8 +223,8 @@ export const addUserPost = async (
         author: comment.author === newPostData.author ? `${POST_AUTHOR_PREFIX}${comment.author}` : comment.author,
         text: comment.text,
         timestamp: getCurrentTimestamp(),
-        recommendations: Math.floor(Math.random() * (isNewUserPostBest ? 25 : 15)),
-        nonRecommendations: Math.floor(Math.random() * (isNewUserPostBest ? 8 : 5)),
+        recommendations: comment.recommendations ?? Math.floor(Math.random() * (isNewUserPostBest ? 25 : 15)),
+        nonRecommendations: comment.nonRecommendations ?? Math.floor(Math.random() * (isNewUserPostBest ? 8 : 5)),
     }));
 
     const finalNewPost: Post = {
@@ -266,8 +267,8 @@ export const addFollowUpComments = async (
             author: finalAIFollowUpAuthor,
             text: comment.text,
             timestamp: getCurrentTimestamp(),
-            recommendations: Math.floor(Math.random() * 10),
-            nonRecommendations: Math.floor(Math.random() * 3),
+            recommendations: comment.recommendations ?? Math.floor(Math.random() * 10),
+            nonRecommendations: comment.nonRecommendations ?? Math.floor(Math.random() * 3),
         };
     });
 };

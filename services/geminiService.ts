@@ -63,9 +63,11 @@ const commentSchema: Schema = {
     type: Type.OBJECT,
     properties: {
         author: { type: Type.STRING, description: "The nickname of the commenter." },
-        text: { type: Type.STRING, description: "The content of the comment. May include DC-con descriptions." }
+        text: { type: Type.STRING, description: "The content of the comment. May include DC-con descriptions." },
+        recommendations: { type: Type.INTEGER, description: "Number of upvotes/recommendations for the comment" },
+        nonRecommendations: { type: Type.INTEGER, description: "Number of downvotes/non-recommendations for the comment" }
     },
-    required: ["author", "text"]
+    required: ["author", "text", "recommendations", "nonRecommendations"]
 };
 
 const postOnlySchema: Schema = {
@@ -97,6 +99,12 @@ const evaluationSchema: Schema = {
     required: ["suggestedViews", "suggestedRecommendations", "suggestedNonRecommendations"]
 };
 
+
+const commentArraySchema: Schema = {
+    type: Type.ARRAY,
+    items: commentSchema,
+    description: "List of comments"
+};
 
 export const generateGalleryStreamFromGemini = async (
     topic: string,
@@ -173,6 +181,7 @@ export const generateCommentsForUserPost = async (
             contents: prompt,
             config: { 
                 responseMimeType: "application/json", 
+                responseSchema: commentArraySchema,
                 systemInstruction: systemInstruction 
             },
         });
@@ -206,6 +215,7 @@ export const generateFollowUpCommentsForPost = async (
             contents: prompt,
             config: { 
                 responseMimeType: "application/json",
+                responseSchema: commentArraySchema,
                 systemInstruction: systemInstruction 
             },
         });

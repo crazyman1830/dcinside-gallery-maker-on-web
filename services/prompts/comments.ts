@@ -50,7 +50,7 @@ ${authorBanInstruction}
 - **Style:** **NO** parenthetical translations (e.g. "운자(Rhyme)" -> BANNED). **NO** Hanja (e.g. "야(也)" -> BANNED).
 
 **3. OUTPUT SPECIFICATION (STRICT JSON)**
-- JSON Array of objects: [{ "author": "String", "text": "String" }]
+- JSON Array of objects: [{ "author": "String", "text": "String", "recommendations": Number, "nonRecommendations": Number }]
 
 **4. TASK (EXECUTE NOW)**
 Generate ${numberOfCommentsToGenerate} comments for the post above. Ensure the tone is chatty and authentic to the community settings.
@@ -107,7 +107,7 @@ ${authorBanInstruction}
 - **Style:** **NO** parenthetical translations (e.g. "운자(Rhyme)" -> BANNED). **NO** Hanja (e.g. "야(也)" -> BANNED).
 
 **3. OUTPUT SPECIFICATION (STRICT JSON)**
-- JSON Array of objects: [{ "author": "String", "text": "String" }]
+- JSON Array of objects: [{ "author": "String", "text": "String", "recommendations": Number, "nonRecommendations": Number }]
 
 **4. TASK (EXECUTE NOW)**
 Continue the discussion with ${numberOfCommentsToGenerate} new comments.
