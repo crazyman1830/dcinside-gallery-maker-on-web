@@ -15,6 +15,7 @@ interface CommentSectionProps {
   maxComments: number;
   currentCommentCount: number;
   highlightedCommentIds: Set<string>;
+  onVoteComment?: (commentId: string, voteType: 'rec' | 'nonrec' | null, recs: number, nonRecs: number) => void;
 }
 
 interface ReplyTarget {
@@ -31,6 +32,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
   maxComments,
   currentCommentCount,
   highlightedCommentIds,
+  onVoteComment,
 }) => {
   const [commentText, setCommentText] = useState('');
   
@@ -125,6 +127,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
               comment={comment}
               onSetReplyTo={handleSetReplyTo}
               isHighlighted={highlightedCommentIds.has(comment.id)}
+              onVoteComment={onVoteComment}
             />
           ))}
         </ul>

@@ -9,6 +9,7 @@ export interface Comment {
   timestamp: string;
   recommendations: number;
   nonRecommendations: number;
+  voted?: 'rec' | 'nonrec' | null;
 }
 
 export interface Post {
@@ -22,6 +23,7 @@ export interface Post {
   nonRecommendations: number;
   comments: Comment[]; 
   isBestPost?: boolean; 
+  voted?: 'rec' | 'nonrec' | null;
 }
 
 export interface GroundingSource {

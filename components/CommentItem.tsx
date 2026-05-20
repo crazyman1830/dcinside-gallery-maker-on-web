@@ -8,6 +8,7 @@ interface CommentItemProps {
   comment: Comment;
   onSetReplyTo: (author: string, id: string) => void;
   isHighlighted: boolean;
+  onVoteComment?: (commentId: string, voteType: 'rec' | 'nonrec' | null, recs: number, nonRecs: number) => void;
 }
 
 const CommentContentRenderer: React.FC<{ text: string }> = ({ text }) => {
@@ -52,8 +53,17 @@ const CommentContentRenderer: React.FC<{ text: string }> = ({ text }) => {
     );
 };
 
-export const CommentItem: React.FC<CommentItemProps> = ({ comment, onSetReplyTo, isHighlighted }) => {
-  const { recs, nonRecs, voted, handleRecommend, handleNonRecommend } = useVoting(comment.recommendations, comment.nonRecommendations);
+export const CommentItem: React.FC<CommentItemProps> = ({ comment, onSetReplyTo, isHighlighted, onVoteComment }) => {
+  const { recs, nonRecs, voted, handleRecommend, handleNonRecommend } = useVoting(
+    comment.recommendations,
+    comment.nonRecommendations,
+    comment.voted,
+    (nextVoted, nextRecs, nextNonRecs) => {
+        if (onVoteComment) {
+            onVoteComment(comment.id, nextVoted, nextRecs, nextNonRecs);
+        }
+    }
+  );
 
   const itemClasses = `p-4 rounded-lg shadow border transition-all duration-300 ease-in-out
     ${isHighlighted ? 'bg-yellow-50 border-yellow-300 ring-2 ring-yellow-200' : 'bg-white border-gray-200 hover:shadow-md'}`;

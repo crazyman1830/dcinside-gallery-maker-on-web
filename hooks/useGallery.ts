@@ -199,6 +199,32 @@ export const useGallery = () => {
       ui.openWriteModal();
   }, [storage.galleryData, ui]);
 
+  const votePost = useCallback((postId: string, voteType: 'rec' | 'nonrec' | null, recsCount: number, nonRecsCount: number) => {
+    storage.setGalleryData(prevData => {
+      if (!prevData) return null;
+      return {
+        ...prevData,
+        posts: prevData.posts.map(p => p.id === postId ? { ...p, voted: voteType, recommendations: recsCount, nonRecommendations: nonRecsCount } : p)
+      };
+    });
+  }, [storage]);
+
+  const voteComment = useCallback((postId: string, commentId: string, voteType: 'rec' | 'nonrec' | null, recsCount: number, nonRecsCount: number) => {
+    storage.setGalleryData(prevData => {
+      if (!prevData) return null;
+      return {
+        ...prevData,
+        posts: prevData.posts.map(p => {
+          if (p.id !== postId) return p;
+          return {
+            ...p,
+            comments: p.comments.map(c => c.id === commentId ? { ...c, voted: voteType, recommendations: recsCount, nonRecommendations: nonRecsCount } : c)
+          };
+        })
+      };
+    });
+  }, [storage]);
+
   const selectedPost = useMemo(() => {
     if (!storage.selectedPostId || !storage.galleryData) return null;
     return storage.galleryData.posts.find(post => post.id === storage.selectedPostId) || null;
@@ -233,6 +259,8 @@ export const useGallery = () => {
     closeWriteModal: ui.closeWriteModal,
     saveUserPost,
     addUserComment,
+    votePost,
+    voteComment,
     fetchWorldviewFeedback,
     setError: ui.setError
   };

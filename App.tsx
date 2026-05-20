@@ -38,6 +38,8 @@ const App: React.FC = () => {
         closeWriteModal,
         saveUserPost,
         addUserComment,
+        votePost,
+        voteComment,
         fetchWorldviewFeedback,
         setError
     } = useGallery();
@@ -104,6 +106,8 @@ const App: React.FC = () => {
                                         isAddingComment={isAddingComment}
                                         maxComments={MAX_TOTAL_COMMENTS_PER_POST}
                                         highlightedCommentIds={highlightedCommentIds}
+                                        onVotePost={votePost}
+                                        onVoteComment={voteComment}
                                     />
                                 </>
                             ) : (

@@ -103,8 +103,12 @@ export const createGalleryStreamed = async (
             throw new Error("AI 응답 형식이 올바르지 않습니다. (게시물 목록 누락/형식 오류)");
         }
         
-        // This mapping and processing logic is moved from the original geminiService function
-        let postsData: Post[] = await Promise.all(geminiData.posts.slice(0, NUMBER_OF_POSTS).map(async (geminiPost: GeminiPostContent, postIndex: number) => {
+        // Replace Promise.all with a sequential loop to prevent excessive concurrent API calls (Rate Limit (429) defense)
+        const postsData: Post[] = [];
+        const postsToProcess = geminiData.posts.slice(0, NUMBER_OF_POSTS);
+
+        for (let postIndex = 0; postIndex < postsToProcess.length; postIndex++) {
+            const geminiPost = postsToProcess[postIndex];
             const isBest = postIndex === 0;
             const postId = `post-${Date.now()}-${postIndex}`;
             const postAuthor = geminiPost.author || `익명_${postIndex + 1}`;
@@ -141,15 +145,20 @@ export const createGalleryStreamed = async (
                 });
             }
 
-            return {
+            postsData.push({
                 id: postId, isBestPost: isBest, title: geminiPost.title || `"${params.topic}" 주제 포스트 #${postIndex + 1}${isBest ? " (🔥인기글🔥)" : ""}`,
                 author: postAuthor, timestamp: postTimestamp, content: (geminiPost.content || "이 게시물에는 아직 내용이 없습니다."),
                 views: evaluationMetrics.suggestedViews,
                 recommendations: evaluationMetrics.suggestedRecommendations,
                 nonRecommendations: evaluationMetrics.suggestedNonRecommendations,
                 comments: finalPostComments,
-            };
-        }));
+            });
+
+            // Add a light 200ms cooldown delay between post processing loops to respect Rate limits
+            if (postIndex < postsToProcess.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, 200));
+            }
+        }
 
         while (postsData.length < NUMBER_OF_POSTS) {
             const postIndex = postsData.length;

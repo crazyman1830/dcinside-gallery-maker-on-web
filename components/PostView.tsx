@@ -13,6 +13,8 @@ interface PostViewProps {
   isAddingComment: boolean;
   maxComments: number;
   highlightedCommentIds: Set<string>;
+  onVotePost?: (postId: string, voteType: 'rec' | 'nonrec' | null, recs: number, nonRecs: number) => void;
+  onVoteComment?: (postId: string, commentId: string, voteType: 'rec' | 'nonrec' | null, recs: number, nonRecs: number) => void;
 }
 
 const PostContentRenderer: React.FC<{ content: string }> = ({ content }) => {
@@ -107,9 +109,20 @@ export const PostView: React.FC<PostViewProps> = ({
     onAddComment,
     isAddingComment,
     maxComments,
-    highlightedCommentIds
+    highlightedCommentIds,
+    onVotePost,
+    onVoteComment
 }) => {
-  const { recs, nonRecs, voted, handleRecommend, handleNonRecommend } = useVoting(post.recommendations, post.nonRecommendations);
+  const { recs, nonRecs, voted, handleRecommend, handleNonRecommend } = useVoting(
+    post.recommendations,
+    post.nonRecommendations,
+    post.voted,
+    (nextVoted, nextRecs, nextNonRecs) => {
+        if (onVotePost) {
+            onVotePost(post.id, nextVoted, nextRecs, nextNonRecs);
+        }
+    }
+  );
 
   return (
     <div className="animate-fade-in-up">
@@ -142,7 +155,7 @@ export const PostView: React.FC<PostViewProps> = ({
                 </div>
                 <div className="flex items-center gap-3 mt-3 sm:mt-0 w-full sm:w-auto justify-end">
                     <span title="조회수" className="flex items-center gap-1.5 bg-white px-2 py-1 rounded border border-slate-200 text-xs"><i className="far fa-eye text-slate-400"></i> {post.views.toLocaleString()}</span>
-                    <span title="추천수" className="flex items-center gap-1.5 bg-white px-2 py-1 rounded border border-slate-200 text-xs text-red-500 font-medium"><i className="far fa-thumbs-up"></i> {post.recommendations}</span>
+                    <span title="추천수" className="flex items-center gap-1.5 bg-white px-2 py-1 rounded border border-slate-200 text-xs text-red-500 font-medium"><i className="far fa-thumbs-up"></i> {recs}</span>
                     <span title="댓글수" className="flex items-center gap-1.5 bg-white px-2 py-1 rounded border border-slate-200 text-xs text-blue-500 font-medium"><i className="far fa-comment-dots"></i> {post.comments.length}</span>
                 </div>
             </div>
@@ -215,6 +228,7 @@ export const PostView: React.FC<PostViewProps> = ({
             maxComments={maxComments}
             currentCommentCount={post.comments.length}
             highlightedCommentIds={highlightedCommentIds}
+            onVoteComment={onVoteComment ? (commentId, voteType, recsVal, nonRecsVal) => onVoteComment(post.id, commentId, voteType, recsVal, nonRecsVal) : undefined}
         />
       </div>
     </div>
