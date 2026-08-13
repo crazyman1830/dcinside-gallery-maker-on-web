@@ -1,13 +1,11 @@
 
-import { useCallback, useMemo, useEffect } from 'react';
+import { useCallback, useMemo } from 'react';
 import { Comment, UserProfile } from '../types';
 import * as galleryService from '../services/galleryService';
 import { getFormattedErrorMessage } from '../utils/common';
 import { MAX_TOTAL_COMMENTS_PER_POST, POST_AUTHOR_PREFIX } from '../constants';
 import { useGalleryStorage } from './useGalleryStorage';
 import { useUIState } from './useUIState';
-
-const API_KEY_MISSING_APP_ERROR_MESSAGE = "API_KEY가 설정되지 않았습니다. 갤러리 생성 기능이 작동하지 않습니다. 환경 변수를 설정해주세요.";
 
 interface ExtendedCreateGalleryParams extends galleryService.CreateGalleryParams {
     userProfile: UserProfile;
@@ -18,19 +16,7 @@ export const useGallery = () => {
   const storage = useGalleryStorage();
   const ui = useUIState();
 
-  // Initial API Key Check
-  useEffect(() => {
-    if (!galleryService.isApiKeyAvailable) {
-      ui.setError(API_KEY_MISSING_APP_ERROR_MESSAGE);
-    }
-  }, []);
-
   const createGallery = useCallback(async (params: ExtendedCreateGalleryParams) => {
-    if (!galleryService.isApiKeyAvailable) {
-        ui.setError(API_KEY_MISSING_APP_ERROR_MESSAGE);
-        return;
-    }
-    
     ui.resetForNewGeneration();
     storage.setGalleryData(null);
     storage.setSelectedPostId(null);
@@ -62,11 +48,6 @@ export const useGallery = () => {
   const saveUserPost = useCallback(async (
     title: string, author: string, content: string
   ) => {
-      if (!galleryService.isApiKeyAvailable) {
-          ui.setError(API_KEY_MISSING_APP_ERROR_MESSAGE);
-          ui.closeWriteModal();
-          return;
-      }
       if (!storage.galleryData || !storage.galleryContext) {
           ui.setError("오류: 갤러리 데이터 또는 컨텍스트가 없습니다. 글을 저장할 수 없습니다.");
           return;
@@ -96,9 +77,6 @@ export const useGallery = () => {
     commentText: string,
     commentAuthorInput: string,
   ) => {
-    if (!galleryService.isApiKeyAvailable) {
-        ui.setError(API_KEY_MISSING_APP_ERROR_MESSAGE); return;
-    }
     if (!storage.galleryData || !storage.galleryContext) {
       ui.setError("갤러리 데이터 또는 컨텍스트가 없어 댓글을 추가할 수 없습니다."); return;
     }
@@ -164,10 +142,6 @@ export const useGallery = () => {
         ui.setError("피드백은 '직접 입력' 세계관으로 생성된 갤러리에만 제공됩니다.");
         return;
     }
-    if (!galleryService.isApiKeyAvailable) {
-        ui.setError(API_KEY_MISSING_APP_ERROR_MESSAGE);
-        return;
-    }
 
     ui.setIsFetchingFeedback(true);
     ui.setError(null);
@@ -177,7 +151,8 @@ export const useGallery = () => {
         const feedback = await galleryService.getWorldviewFeedback(
             storage.galleryContext.customWorldviewText || '',
             storage.galleryData,
-            storage.galleryContext.selectedModel
+            storage.galleryContext.selectedModel,
+            storage.galleryContext.selectedProvider
         );
         ui.setWorldviewFeedback(feedback);
     } catch (err) {
@@ -188,10 +163,6 @@ export const useGallery = () => {
   }, [storage, ui]);
 
   const openWriteModalWrapper = useCallback(() => {
-      if (!galleryService.isApiKeyAvailable) {
-          ui.setError(API_KEY_MISSING_APP_ERROR_MESSAGE);
-          return;
-      }
       if (!storage.galleryData) {
           ui.setError("갤러리가 먼저 생성되어야 글을 작성할 수 있습니다.");
           return;
@@ -247,7 +218,6 @@ export const useGallery = () => {
     isAddingComment: ui.isAddingComment,
     highlightedCommentIds: ui.highlightedCommentIds,
     streamingText: ui.streamingText,
-    API_KEY_MISSING_APP_ERROR_MESSAGE,
     worldviewFeedback: ui.worldviewFeedback,
     isFetchingFeedback: ui.isFetchingFeedback,
 

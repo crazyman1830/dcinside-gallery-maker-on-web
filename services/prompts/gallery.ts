@@ -6,10 +6,6 @@ import {
 } from './instructions';
 import {
     NUMBER_OF_POSTS,
-    MIN_COMMENTS_PER_BEST_POST,
-    MAX_COMMENTS_PER_BEST_POST,
-    MIN_COMMENTS_PER_POST,
-    MAX_COMMENTS_PER_POST,
 } from '../../constants';
 import { resolveUserNickname } from '../../utils/common';
 
@@ -26,7 +22,7 @@ export const buildGalleryGenerationPrompt = (
     const { selectedToxicity } = generateToxicitySpecificInstructions(ctx.toxicityLevelValue);
     const toxicityNameForTitle = selectedToxicity.nameForTitle;
     
-    const currentUserNick = resolveUserNickname(ctx.userProfile);
+    const currentUserNick = resolveUserNickname(ctx.userProfile ?? null);
     const userIp = ctx.userProfile?.nicknameType === 'ANONYMOUS' ? ctx.userProfile.ip : null;
     const authorBanInstruction = `- **AUTHOR BAN (CRITICAL):** You MUST NEVER use "나" or "(글쓴이)" as an author name.${currentUserNick ? ` You MUST ALSO NEVER use exactly "${currentUserNick}" (which is the Active User).` : ''}${userIp ? ` If generating anonymous users, their IP addresses MUST NEVER contain "${userIp}".` : ''} Generate completely separate fictional identities for all posts and comments.`;
 

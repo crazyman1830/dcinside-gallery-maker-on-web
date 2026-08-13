@@ -1,5 +1,7 @@
-/* @tailwind directives removed for CDN compatibility */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 body {
-  font-family: 'Noto Sans KR', sans-serif;
+  font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif;
 }

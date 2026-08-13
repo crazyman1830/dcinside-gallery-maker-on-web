@@ -1,8 +1,24 @@
 
 import { Preset, GalleryFormSettings } from '../types';
-import { GEMINI_MODEL_3_PRO } from '../constants';
+import {
+  DEFAULT_AI_PROVIDER,
+  GEMINI_MODEL_3_PRO,
+  migrateModelForProvider,
+} from '../constants';
 
 const STORAGE_KEY = 'user_presets';
+
+export const migratePreset = (preset: Preset): Preset => {
+  const selectedProvider = preset.settings.selectedProvider ?? DEFAULT_AI_PROVIDER;
+  return {
+    ...preset,
+    settings: {
+      ...preset.settings,
+      selectedProvider,
+      selectedModel: migrateModelForProvider(preset.settings.selectedModel, selectedProvider),
+    },
+  };
+};
 
 // --- Example Presets Data ---
 const EXAMPLE_PRESETS: Preset[] = [
@@ -278,7 +294,7 @@ export const getPresets = (): Preset[] => {
   } catch (error) {
     console.error("Failed to load user presets:", error);
   }
-  return [...EXAMPLE_PRESETS, ...userPresets];
+  return [...EXAMPLE_PRESETS, ...userPresets].map(migratePreset);
 };
 
 export const saveUserPreset = (name: string, settings: GalleryFormSettings): Preset[] => {
@@ -299,7 +315,7 @@ export const saveUserPreset = (name: string, settings: GalleryFormSettings): Pre
   userPresets.push(newPreset);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(userPresets));
   
-  return [...EXAMPLE_PRESETS, ...userPresets];
+  return [...EXAMPLE_PRESETS, ...userPresets].map(migratePreset);
 };
 
 export const deleteUserPreset = (id: string): Preset[] => {
@@ -318,5 +334,5 @@ export const deleteUserPreset = (id: string): Preset[] => {
     console.error("Failed to delete preset:", e);
   }
   
-  return [...EXAMPLE_PRESETS, ...userPresets];
+  return [...EXAMPLE_PRESETS, ...userPresets].map(migratePreset);
 };

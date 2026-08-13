@@ -1,7 +1,46 @@
 
 import { useState, useEffect, useCallback } from 'react';
-import { GalleryData, UserProfile } from '../types';
+import { GalleryData, UserProfile, type AiProvider, type CreateGalleryParams } from '../types';
 import { GalleryContextParams } from '../services/galleryService';
+import {
+    AI_MODELS,
+    DEFAULT_AI_PROVIDER,
+    migrateModelForProvider,
+} from '../constants';
+
+export const migrateGalleryContext = (value: unknown): GalleryContextParams | null => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const context = value as Partial<GalleryContextParams>;
+    const provider: AiProvider = context.selectedProvider === 'vertex'
+        ? 'vertex'
+        : DEFAULT_AI_PROVIDER;
+    const model = migrateModelForProvider(context.selectedModel, provider);
+    if (!AI_MODELS[provider].some(option => option.value === model)) return null;
+    const requiredStrings: Array<keyof CreateGalleryParams> = [
+        'topic',
+        'discussionContext',
+        'worldviewValue',
+        'worldviewEraValue',
+        'toxicityLevelValue',
+        'anonymousNickRatioValue',
+        'userSpecies',
+        'userAffiliation',
+        'genderRatioValue',
+    ];
+    if (
+        requiredStrings.some(key => typeof context[key] !== 'string')
+        || !(typeof context.ageRangeValue === 'string' || (
+            Array.isArray(context.ageRangeValue)
+            && context.ageRangeValue.every(item => typeof item === 'string')
+        ))
+        || typeof context.useSearch !== 'boolean'
+    ) return null;
+    return {
+        ...(context as CreateGalleryParams),
+        selectedProvider: provider,
+        selectedModel: model,
+    };
+};
 
 export const useGalleryStorage = () => {
   const [galleryData, setGalleryData] = useState<GalleryData | null>(() => {
@@ -17,7 +56,7 @@ export const useGalleryStorage = () => {
   const [galleryContext, setGalleryContext] = useState<GalleryContextParams | null>(() => {
       try {
           const savedContext = localStorage.getItem('galleryContext');
-          return savedContext ? JSON.parse(savedContext) : null;
+          return savedContext ? migrateGalleryContext(JSON.parse(savedContext)) : null;
       } catch (error) {
           console.error("Failed to load gallery context from local storage", error);
           return null;

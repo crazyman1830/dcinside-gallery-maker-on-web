@@ -107,7 +107,7 @@ export function parseGeminiResponse(responseText: string): GeminiResponseData {
 
 export function parseGeminiCommentArrayResponse(responseText: string): GeminiCommentContent[] {
   // We allow ANY valid JSON object/array initially, then process it deeply.
-  const raw = parseProtectedJson(responseText, (obj): obj is any => true, "댓글 배열");
+  const raw = parseProtectedJson(responseText, (_obj): _obj is any => true, "댓글 배열");
 
   let arrayToProcess: any[] = [];
 
@@ -139,7 +139,7 @@ export function parseGeminiCommentArrayResponse(responseText: string): GeminiCom
   }
 
   // Normalize and Validate items
-  const normalizedComments: GeminiCommentContent[] = arrayToProcess.map((item: any) => {
+  const normalizedComments = arrayToProcess.map<GeminiCommentContent | null>((item: any) => {
     if (!item || typeof item !== 'object') return null;
 
     // Robust mapping for various key hallucinations
@@ -153,7 +153,9 @@ export function parseGeminiCommentArrayResponse(responseText: string): GeminiCom
 
     return {
       author: String(author),
-      text: String(text)
+      text: String(text),
+      recommendations: typeof item.recommendations === 'number' ? item.recommendations : undefined,
+      nonRecommendations: typeof item.nonRecommendations === 'number' ? item.nonRecommendations : undefined,
     };
   }).filter((item): item is GeminiCommentContent => item !== null);
 

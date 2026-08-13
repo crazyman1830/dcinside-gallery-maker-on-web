@@ -12,8 +12,6 @@ export const StreamingStatus: React.FC<StreamingStatusProps> = ({ streamingText 
 
   useEffect(() => {
     let newProgress = 5;
-    const currentLogs = [...logs];
-    
     const nextLogs: string[] = [];
 
     if (streamingText) {

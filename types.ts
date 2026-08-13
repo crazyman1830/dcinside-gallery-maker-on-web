@@ -39,6 +39,10 @@ export interface GalleryData {
 
 export type UserNicknameType = 'FIXED' | 'ANONYMOUS';
 
+export type AiProvider = 'gemini' | 'vertex';
+
+export type VertexAuthMode = 'service_account' | 'adc';
+
 export interface UserProfile {
   nicknameType: UserNicknameType;
   nickname: string;
@@ -52,6 +56,8 @@ export interface UserProfile {
 export interface GeminiCommentContent {
   author: string;
   text: string;
+  recommendations?: number;
+  nonRecommendations?: number;
 }
 
 export interface GeminiPostContent {
@@ -91,6 +97,8 @@ export interface GalleryFormSettings {
   isQualityUpgradeUnlocked: boolean;
   isQualityUpgradeEnabled: boolean;
   isSearchEnabled: boolean;
+  /** Optional for presets created before provider selection was introduced. */
+  selectedProvider?: AiProvider;
   selectedModel: string;
   // User Profile Settings
   userNicknameType: UserNicknameType;
@@ -102,4 +110,30 @@ export interface Preset {
   id: string;
   name: string;
   settings: GalleryFormSettings;
+}
+
+export interface CreateGalleryParams {
+  topic: string;
+  discussionContext: string;
+  worldviewValue: string;
+  customWorldviewText?: string;
+  worldviewEraValue: string;
+  toxicityLevelValue: string;
+  anonymousNickRatioValue: string;
+  userSpecies: string;
+  userAffiliation: string;
+  genderRatioValue: string;
+  ageRangeValue: string | string[];
+  selectedProvider: AiProvider;
+  selectedModel: string;
+  useSearch: boolean;
+  userProfile?: UserProfile;
+}
+
+export type GalleryContextParams = CreateGalleryParams;
+
+export interface NewPostData {
+  title: string;
+  author: string;
+  content: string;
 }

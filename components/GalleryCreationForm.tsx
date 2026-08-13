@@ -12,17 +12,16 @@ import { UserProfileSection } from './UserProfileSection';
 import { PresetSection } from './PresetSection';
 import { getPresets, saveUserPreset, deleteUserPreset } from '../services/presetService';
 import { Preset } from '../types';
-import { GEMINI_MODEL_3_PRO } from '../constants';
+import { DEFAULT_AI_PROVIDER, DEFAULT_MODEL_BY_PROVIDER } from '../constants';
 
 interface GalleryCreationFormProps {
     isLoading: boolean;
-    isApiKeyAvailable: boolean;
     onSubmit: (params: any) => void;
     setFormError: (message: string) => void;
 }
 
 // Inner Component containing the UI logic
-const GalleryCreationFormContent: React.FC<GalleryCreationFormProps> = ({ isLoading, isApiKeyAvailable, onSubmit, setFormError }) => {
+const GalleryCreationFormContent: React.FC<GalleryCreationFormProps> = ({ isLoading, onSubmit, setFormError }) => {
     const form = useGalleryForm();
     
     // Preset State
@@ -80,11 +79,6 @@ const GalleryCreationFormContent: React.FC<GalleryCreationFormProps> = ({ isLoad
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         
-        if (!isApiKeyAvailable) {
-            setFormError("API_KEY가 설정되지 않았습니다. 갤러리 생성 기능이 작동하지 않습니다. 환경 변수를 설정해주세요.");
-            return;
-        }
-
         if (!form.validateForm()) {
             const firstErrorKey = Object.keys(form.errors)[0] as keyof GalleryFormValidationErrors;
             const errorMessage = form.errors[firstErrorKey] || "양식에 오류가 있습니다. 입력값을 확인해주세요.";
@@ -112,6 +106,7 @@ const GalleryCreationFormContent: React.FC<GalleryCreationFormProps> = ({ isLoad
             userAffiliation: form.userAffiliation,
             genderRatioValue: form.getGenderRatioParam(),
             ageRangeValue: form.getAgeRangeParam(),
+            selectedProvider: form.selectedProvider,
             selectedModel: form.selectedModel,
             useSearch: form.isSearchEnabled,
             userProfile: {
@@ -254,7 +249,7 @@ const GalleryCreationFormContent: React.FC<GalleryCreationFormProps> = ({ isLoad
             </FormSection>
           </div>
           
-          <button type="submit" disabled={isLoading || !isApiKeyAvailable} className="w-full mt-6 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition duration-150 ease-in-out disabled:opacity-50 flex items-center justify-center text-lg" aria-live="polite">
+          <button type="submit" disabled={isLoading} className="w-full mt-6 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition duration-150 ease-in-out disabled:opacity-50 flex items-center justify-center text-lg" aria-live="polite">
             {isLoading ? <LoadingSpinner small={true} /> : <><i className="fas fa-magic mr-2"></i>갤러리 생성</>}
           </button>
         </form>
@@ -266,7 +261,8 @@ export const GalleryCreationForm: React.FC<GalleryCreationFormProps> = (props) =
     return (
         <GalleryFormProvider initialState={{ 
             isQualityUpgradeUnlocked: true,
-            selectedModel: GEMINI_MODEL_3_PRO
+            selectedProvider: DEFAULT_AI_PROVIDER,
+            selectedModel: DEFAULT_MODEL_BY_PROVIDER[DEFAULT_AI_PROVIDER]
         }}>
             <GalleryCreationFormContent {...props} />
         </GalleryFormProvider>

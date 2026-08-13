@@ -17,8 +17,8 @@ import {
     CUSTOM_WORLDVIEW_VALUE,
     MAX_CUSTOM_WORLDVIEW_LENGTH
 } from '../formOptions';
-import { GalleryFormSettings, UserNicknameType } from '../types';
-import { GEMINI_MODEL_TEXT, GEMINI_MODEL_3_PRO } from '../constants';
+import { AiProvider, GalleryFormSettings, UserNicknameType } from '../types';
+import { AI_MODELS, DEFAULT_AI_PROVIDER, DEFAULT_MODEL_BY_PROVIDER } from '../constants';
 import { generateRandomIp } from '../utils/common';
 
 export interface GalleryFormValidationErrors {
@@ -47,6 +47,7 @@ interface GalleryFormContextType {
     isQualityUpgradeUnlocked: boolean; setIsQualityUpgradeUnlocked: (v: boolean) => void;
     isQualityUpgradeEnabled: boolean; setIsQualityUpgradeEnabled: (v: boolean) => void;
     isSearchEnabled: boolean; setIsSearchEnabled: (v: boolean) => void;
+    selectedProvider: AiProvider; setSelectedProvider: (v: AiProvider) => void;
     selectedModel: string; setSelectedModel: (v: string) => void;
     userNicknameType: UserNicknameType; setUserNicknameType: (v: UserNicknameType) => void;
     fixedNickname: string; setFixedNickname: (v: string) => void;
@@ -84,6 +85,16 @@ interface ProviderProps {
     initialState?: Partial<GalleryFormSettings>;
 }
 
+const getValidProvider = (provider?: AiProvider): AiProvider => (
+    provider === 'vertex' ? 'vertex' : DEFAULT_AI_PROVIDER
+);
+
+const getValidModel = (provider: AiProvider, model?: string): string => (
+    model && AI_MODELS[provider].some(option => option.value === model)
+        ? model
+        : DEFAULT_MODEL_BY_PROVIDER[provider]
+);
+
 export const GalleryFormProvider: React.FC<ProviderProps> = ({ children, initialState }) => {
     const [topic, setTopic] = useState<string>(initialState?.topic || '');
     const [discussionContext, setDiscussionContext] = useState<string>(initialState?.discussionContext || '');
@@ -106,7 +117,9 @@ export const GalleryFormProvider: React.FC<ProviderProps> = ({ children, initial
     const [isQualityUpgradeUnlocked, setIsQualityUpgradeUnlocked] = useState<boolean>(initialState?.isQualityUpgradeUnlocked !== undefined ? initialState.isQualityUpgradeUnlocked : true); 
     const [isQualityUpgradeEnabled, setIsQualityUpgradeEnabled] = useState<boolean>(initialState?.isQualityUpgradeEnabled || false);
     const [isSearchEnabled, setIsSearchEnabled] = useState<boolean>(initialState?.isSearchEnabled || false);
-    const [selectedModel, setSelectedModel] = useState<string>(initialState?.selectedModel || GEMINI_MODEL_3_PRO);
+    const initialProvider = getValidProvider(initialState?.selectedProvider);
+    const [selectedProvider, setSelectedProviderState] = useState<AiProvider>(initialProvider);
+    const [selectedModel, setSelectedModel] = useState<string>(getValidModel(initialProvider, initialState?.selectedModel));
 
     const [userNicknameType, setUserNicknameType] = useState<UserNicknameType>(initialState?.userNicknameType || 'ANONYMOUS');
     const [fixedNickname, setFixedNickname] = useState<string>(initialState?.fixedNickname || '');
@@ -150,6 +163,11 @@ export const GalleryFormProvider: React.FC<ProviderProps> = ({ children, initial
         return isManualGenderRatio ? manualMalePercentage.toString() : GENDER_RATIO_AUTO_ID;
     }, [isManualGenderRatio, manualMalePercentage]);
 
+    const setSelectedProvider = useCallback((provider: AiProvider) => {
+        setSelectedProviderState(provider);
+        setSelectedModel(currentModel => getValidModel(provider, currentModel));
+    }, []);
+
     const validateForm = useCallback(() => {
         const newErrors: GalleryFormValidationErrors = {};
         if (!topic.trim()) newErrors.topic = '주제를 입력해주세요.';
@@ -192,7 +210,9 @@ export const GalleryFormProvider: React.FC<ProviderProps> = ({ children, initial
         setIsQualityUpgradeUnlocked(settings.isQualityUpgradeUnlocked);
         setIsQualityUpgradeEnabled(settings.isQualityUpgradeEnabled);
         setIsSearchEnabled(settings.isSearchEnabled);
-        setSelectedModel(settings.selectedModel);
+        const provider = getValidProvider(settings.selectedProvider);
+        setSelectedProviderState(provider);
+        setSelectedModel(getValidModel(provider, settings.selectedModel));
         setUserNicknameType(settings.userNicknameType);
         setFixedNickname(settings.fixedNickname);
         setUserReputation(settings.userReputation);
@@ -204,14 +224,14 @@ export const GalleryFormProvider: React.FC<ProviderProps> = ({ children, initial
             selectedToxicityLevel, selectedAnonymousNickRatio, userSpecies, userAffiliation,
             isManualGenderRatio, manualMalePercentage, isManualAgeRange,
             manualSelectedAgeGroups: Array.from(manualSelectedAgeGroups),
-            isQualityUpgradeUnlocked, isQualityUpgradeEnabled, isSearchEnabled, selectedModel,
+            isQualityUpgradeUnlocked, isQualityUpgradeEnabled, isSearchEnabled, selectedProvider, selectedModel,
             userNicknameType, fixedNickname, userReputation
         };
     }, [
         topic, discussionContext, selectedWorldview, customWorldviewText, selectedWorldviewEra,
         selectedToxicityLevel, selectedAnonymousNickRatio, userSpecies, userAffiliation,
         isManualGenderRatio, manualMalePercentage, isManualAgeRange, manualSelectedAgeGroups,
-        isQualityUpgradeUnlocked, isQualityUpgradeEnabled, isSearchEnabled, selectedModel,
+        isQualityUpgradeUnlocked, isQualityUpgradeEnabled, isSearchEnabled, selectedProvider, selectedModel,
         userNicknameType, fixedNickname, userReputation
     ]);
 
@@ -223,7 +243,7 @@ export const GalleryFormProvider: React.FC<ProviderProps> = ({ children, initial
         isManualGenderRatio, setIsManualGenderRatio, manualMalePercentage, setManualMalePercentage,
         isManualAgeRange, setIsManualAgeRange, manualSelectedAgeGroups, setManualSelectedAgeGroups,
         isQualityUpgradeUnlocked, setIsQualityUpgradeUnlocked, isQualityUpgradeEnabled, setIsQualityUpgradeEnabled,
-        isSearchEnabled, setIsSearchEnabled, selectedModel, setSelectedModel,
+        isSearchEnabled, setIsSearchEnabled, selectedProvider, setSelectedProvider, selectedModel, setSelectedModel,
         userNicknameType, setUserNicknameType, fixedNickname, setFixedNickname, userReputation, setUserReputation,
         generatedIp,
         handleWorldviewChange, handleManualAgeGroupChange, getAgeRangeParam, getGenderRatioParam,

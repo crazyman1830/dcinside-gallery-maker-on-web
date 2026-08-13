@@ -11,7 +11,6 @@ import { GalleryCreationForm } from './components/GalleryCreationForm';
 import { WorldviewFeedback } from './components/WorldviewFeedback';
 import { StreamingStatus } from './components/StreamingStatus';
 import { useGallery } from './hooks/useGallery';
-import { isApiKeyAvailable } from './services/galleryService';
 import { MAX_TOTAL_COMMENTS_PER_POST } from './constants';
 
 const App: React.FC = () => {
@@ -28,7 +27,6 @@ const App: React.FC = () => {
         isAddingComment,
         highlightedCommentIds,
         streamingText,
-        API_KEY_MISSING_APP_ERROR_MESSAGE,
         worldviewFeedback,
         isFetchingFeedback,
         createGallery,
@@ -66,12 +64,9 @@ const App: React.FC = () => {
             </header>
 
             <main className="flex-grow">
-                {error && error === API_KEY_MISSING_APP_ERROR_MESSAGE && <ErrorMessage message={error} />}
-
                 {!selectedPost && (
                     <GalleryCreationForm
                         isLoading={isLoading}
-                        isApiKeyAvailable={isApiKeyAvailable}
                         onSubmit={createGallery}
                         setFormError={setError}
                     />
@@ -86,7 +81,7 @@ const App: React.FC = () => {
 
 
                 {successMessage && !error && <SuccessMessage message={successMessage} />}
-                {error && error !== API_KEY_MISSING_APP_ERROR_MESSAGE && <ErrorMessage message={error} />}
+                {error && <ErrorMessage message={error} />}
 
                 {galleryData && !isLoading && (
                     <div className="bg-white shadow-xl shadow-slate-200/60 rounded-2xl overflow-hidden border border-slate-100 animate-fade-in">
@@ -141,7 +136,7 @@ const App: React.FC = () => {
 
             <footer className="mt-16 py-8 text-center text-sm text-slate-400 border-t border-slate-200/60">
                 <p className="mb-2 font-medium">&copy; {new Date().getFullYear()} AI Gallery Generator</p>
-                <p className="text-xs">Powered by Google Gemini API</p>
+                <p className="text-xs">Powered by Gemini API &amp; Google Cloud Vertex AI</p>
             </footer>
         </div>
     );

@@ -6,7 +6,7 @@ export const EVALUATION_PROMPT_VERSION = "2.0.1";
 
 export const buildPostEvaluationPrompt = (
     userPost: Pick<Post, 'title' | 'author' | 'content'>,
-    galleryContext: PromptContext
+    _galleryContext: PromptContext
 ) => {
     const prompt = `
 // PROMPT VERSION: ${EVALUATION_PROMPT_VERSION}

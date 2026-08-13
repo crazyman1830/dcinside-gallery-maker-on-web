@@ -1,7 +1,7 @@
 
 import { Post, Comment } from '../../types';
 import { PromptContext } from './context';
-import { generateToxicitySpecificInstructions, generatePlayerStatusInstructions } from './instructions';
+import { generatePlayerStatusInstructions } from './instructions';
 import { resolveUserNickname } from '../../utils/common';
 
 export const COMMENT_PROMPT_VERSION = "2.0.3";
@@ -15,7 +15,7 @@ export const buildCommentGenerationPrompt = (
     const numberOfCommentsToGenerate = Math.max(minComments, Math.floor(Math.random() * (maxComments - minComments + 1)) + minComments);
     
     // Check if the post author is the Current User
-    const currentUserNick = resolveUserNickname(galleryContext.userProfile);
+    const currentUserNick = resolveUserNickname(galleryContext.userProfile ?? null);
     const userIp = galleryContext.userProfile?.nicknameType === 'ANONYMOUS' ? galleryContext.userProfile.ip : null;
     const isCurrentUserPost = userPost.author === currentUserNick;
     
@@ -73,7 +73,7 @@ export const buildFollowUpCommentPrompt = (
     
     // Check if the LAST comment was made by the User
     const lastComment = existingComments[existingComments.length - 1];
-    const currentUserNick = resolveUserNickname(galleryContext.userProfile);
+    const currentUserNick = resolveUserNickname(galleryContext.userProfile ?? null);
     const userIp = galleryContext.userProfile?.nicknameType === 'ANONYMOUS' ? galleryContext.userProfile.ip : null;
     const isLastCommentByUser = lastComment && lastComment.author === currentUserNick;
 

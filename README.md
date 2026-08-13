@@ -1,119 +1,133 @@
-# DCInside Gallery Generator (DCInside 갤러리 생성기)
+# DCInside Gallery Generator
 
-**DCInside Gallery Generator**는 Google Gemini API를 활용하여 사용자가 입력한 주제와 설정에 맞춰 실제 디시인사이드 갤러리와 유사한 커뮤니티 환경을 시뮬레이션해주는 웹 애플리케이션입니다.
+주제와 세계관 설정을 바탕으로 게시글, 댓글, 반응을 생성하는 React 애플리케이션입니다. Google AI Studio의 Gemini API와 Google Cloud Vertex AI를 모두 지원하며, AI 호출과 자격 증명 처리는 Node.js 서버에서만 수행합니다.
 
-단순한 텍스트 생성을 넘어, 갤러리의 분위기, 유저들의 말투(고정닉/유동닉), 추천/비추천 역학 관계 등을 리얼하게 재현하여 몰입감 있는 경험을 제공합니다.
+## 주요 기능
 
-## ✨ 주요 기능
+- 게시글과 댓글을 스트리밍으로 생성
+- 세계관, 시대, 말투, 사용자 성향 등 세부 조건 설정
+- 사용자 글과 댓글에 대한 AI 후속 반응
+- Google Search grounding과 출처 표시
+- Gemini API 및 Vertex AI 연결 선택
+- 브라우저 Local Storage를 이용한 프리셋 저장
 
-*   **AI 기반 갤러리 시뮬레이션**: 주제를 입력하면 해당 주제에 맞는 게시글 목록, 작성자, 조회수, 추천수를 실시간으로 생성합니다.
-*   **강력한 세계관 커스터마이징**:
-    *   **프리셋**: 무협, 판타지, 선사시대, 근미래 등 다양한 기본 설정 제공
-    *   **커스텀 세계관**: 사용자가 직접 설정한 세계관(예: "마법이 존재하는 사이버펑크 조선") 반영
-*   **디테일한 분위기 설정**:
-    *   **매운맛 조절**: 순한맛(클린봇)부터 매운맛(거친 표현)까지 수위 조절
-    *   **유저 성향**: 고정닉/유동닉 비율, 성비, 연령대, 종족/소속 설정
-*   **인터랙티브 기능**:
-    *   **게시글 열람 및 반응**: AI가 생성한 게시글을 읽고 추천/비추천 투표
-    *   **댓글 시스템**: AI가 작성한 댓글 및 대댓글 확인 (티키타카 구현)
-    *   **사용자 참여**: 사용자가 직접 글이나 댓글을 작성하면 AI가 그에 맞춰 반응
-*   **고급 기능**:
-    *   **실시간 웹 검색 (Google Search Grounding)**: 최신 뉴스나 트렌드를 반영하여 갤러리 생성
-    *   스트리밍 응답을 통한 빠른 로딩 경험
-    *   설정 프리셋 저장/불러오기 (Local Storage)
+## 요구 사항
 
----
+- Node.js 20.19 이상 또는 22.12 이상
+- npm
+- Gemini API를 사용할 경우 Google AI Studio API 키
+- Vertex AI를 사용할 경우 Vertex AI API가 활성화된 Google Cloud 프로젝트와 적절한 IAM 권한
 
-## 🐣 초보자를 위한 상세 실행 가이드 (Windows/Mac 공통)
+Vite의 런타임 요구 사항 때문에 Node.js 20을 사용한다면 20.19 이상이어야 합니다.
 
-컴퓨터나 코딩을 잘 모르는 분들도 따라 하실 수 있도록 아주 자세하게 설명했습니다. 차근차근 따라와 주세요!
-
-### 1단계: 필수 프로그램 설치
-
-이 프로젝트를 실행하려면 **Node.js**라는 프로그램과 **VS Code**라는 코드 편집기가 필요합니다.
-
-1.  **Node.js 설치**:
-    *   [Node.js 공식 홈페이지(클릭)](https://nodejs.org/)에 접속합니다.
-    *   왼쪽에 있는 **LTS (Long Term Support)** 버튼을 눌러 다운로드하고 설치합니다. (설치 중 설정은 모두 'Next'를 눌러 기본값으로 진행하시면 됩니다.)
-2.  **VS Code 설치**:
-    *   [Visual Studio Code 홈페이지(클릭)](https://code.visualstudio.com/)에 접속합니다.
-    *   파란색 **Download** 버튼을 눌러 설치합니다.
-
-### 2단계: 프로젝트 열기
-
-1.  다운로드 받은 이 프로젝트 폴더의 압축을 풉니다.
-2.  **VS Code**를 실행합니다.
-3.  VS Code 상단 메뉴에서 **File (파일) > Open Folder (폴더 열기)**를 클릭합니다.
-4.  방금 압축을 푼 프로젝트 폴더를 선택하고 '열기'를 누릅니다.
-
-### 3단계: Google Gemini API 키 발급받기
-
-AI를 작동시키기 위한 열쇠(Key)가 필요합니다. 무료로 발급받을 수 있습니다.
-
-1.  [Google AI Studio(클릭)](https://aistudio.google.com/app/apikey)에 접속하여 구글 아이디로 로그인합니다.
-2.  파란색 **Create API key** 버튼을 클릭합니다.
-3.  생성된 **API Key** (영문과 숫자로 된 긴 문자열)를 복사해둡니다. (메모장에 잠시 붙여넣으세요.)
-
-### 4단계: 환경 변수 설정하기
-
-복사한 키를 프로젝트에 입력하는 과정입니다.
-
-1.  VS Code 왼쪽 탐색기(파일 목록)의 빈 공간에 마우스 우클릭을 하고 **New File (새 파일)**을 누릅니다.
-2.  파일 이름을 정확히 `.env` 라고 입력하고 엔터를 칩니다. (앞에 점 `.`이 꼭 있어야 합니다!)
-3.  새로 만든 `.env` 파일 안에 아래 내용을 복사해서 붙여넣습니다. `여기에_복사한_키_붙여넣기` 부분을 지우고 아까 복사한 키를 넣으세요.
-
-```env
-VITE_GEMINI_API_KEY=여기에_복사한_키_붙여넣기
-```
-*(예시: VITE_GEMINI_API_KEY=AIzaSyD...)*
-
-4.  키보드의 `Ctrl + S` (맥은 `Cmd + S`)를 눌러 저장합니다.
-
-### 5단계: 실행하기
-
-이제 준비가 끝났습니다! 명령어를 입력해 실행해봅시다.
-
-1.  VS Code 상단 메뉴에서 **Terminal (터미널) > New Terminal (새 터미널)**을 클릭합니다.
-2.  화면 아래쪽에 나타난 창에 다음 명령어를 입력하고 엔터(Enter)를 칩니다. (필요한 도구들을 설치하는 과정입니다. 시간이 조금 걸릴 수 있습니다.)
+## 설치 및 실행
 
 ```bash
-npm install
-```
-
-3.  설치가 끝나면, 다음 명령어를 입력하고 엔터를 칩니다. (앱을 실행하는 명령어입니다.)
-
-```bash
+npm ci
 npm run dev
 ```
 
-4.  터미널에 `Local: http://localhost:5173/` 같은 문구가 뜰 것입니다.
-5.  키보드의 **Ctrl 키(맥은 Cmd 키)를 누른 상태에서 저 링크를 클릭**하거나, 인터넷 브라우저 주소창에 `http://localhost:5173`을 입력하세요.
-6.  짜잔! 갤러리 생성기가 실행되었습니다. 🎉
+개발 서버가 출력한 로컬 주소를 브라우저에서 엽니다. 브라우저와 API 서버는 같은 origin에서 동작합니다.
 
----
+서버는 `127.0.0.1`에만 바인딩됩니다. 이 구성은 개인 PC에서 실행하는 로컬 앱 전용이며, 서비스 계정 JSON 업로드 기능을 중앙 웹 서비스로 배포하는 용도로 지원하지 않습니다.
 
-## 🛠️ 기술 스택 (개발자용 참고)
+프로덕션 빌드와 실행은 다음과 같습니다.
 
-*   **Frontend**: React 19, TypeScript
-*   **Build Tool**: Vite
-*   **Styling**: Tailwind CSS
-*   **AI Model**: Google Gemini API (`gemini-3-flash-preview`, `gemini-3.1-flash-lite-preview`, `gemini-3.1-pro-preview`)
-    *   SDK: `@google/genai`
+```bash
+npm run build
+npm start
+```
 
-## 📂 프로젝트 구조
+## AI 연결 설정
 
-*   `src/components`: UI 컴포넌트 (갤러리 폼, 게시글 목록, 뷰어, 댓글창 등)
-*   `src/services`: AI 로직 및 프롬프트 엔지니어링
-    *   `geminiService.ts`: Gemini API 호출 및 응답 파싱
-    *   `prompts/`: 상황별(세계관, 댓글, 평가 등) 프롬프트 모듈
-*   `src/hooks`: React Custom Hooks (`useGallery`, `useGalleryForm` 등)
-*   `src/types`: 데이터 인터페이스 정의 (Post, Comment, GalleryData)
+앱의 연결 설정에서 공급자를 선택합니다. 프로젝트 ID를 화면에 입력한 경우 그 값을 우선 사용하고, 입력하지 않은 경우 서버의 `GOOGLE_CLOUD_PROJECT`를 사용합니다. Vertex AI location은 `global`로 고정됩니다.
 
-## ⚠️ 주의사항
+### Gemini API
 
-*   이 프로젝트는 생성형 AI를 사용하므로, **API Key**가 필수적으로 요구됩니다.
-*   '매운맛' 설정 시 AI가 생성하는 콘텐츠에 다소 거칠거나 공격적인 표현이 포함될 수 있습니다.
-*   생성된 모든 콘텐츠는 AI에 의해 만들어진 허구입니다.
+Google AI Studio에서 발급받은 API 키를 앱의 연결 설정에 입력합니다. 키는 Node.js 서버가 보관하고 사용하며 브라우저 번들에는 포함되지 않습니다.
+
+등록한 API 키와 Vertex 자격 증명은 현재 서버 프로세스의 메모리에만 남습니다. 8시간 동안 사용하지 않거나 연결을 해제하거나 서버를 재시작하면 삭제됩니다.
+
+`VITE_` 접두사가 붙은 변수는 브라우저에 공개됩니다. `VITE_GEMINI_API_KEY`와 같은 변수에 비밀값을 저장하지 마세요.
+
+### Vertex AI: Application Default Credentials
+
+로컬 개발에서는 Application Default Credentials(ADC)를 권장합니다.
+
+```bash
+gcloud auth application-default login
+```
+
+필요하면 서버를 시작하기 전에 프로젝트 fallback을 설정합니다.
+
+PowerShell:
+
+```powershell
+$env:GOOGLE_CLOUD_PROJECT = "your-project-id"
+npm run dev
+```
+
+macOS/Linux:
+
+```bash
+export GOOGLE_CLOUD_PROJECT="your-project-id"
+npm run dev
+```
+
+Google Cloud에서 실행할 때는 서비스에 연결된 런타임 서비스 계정으로 ADC를 사용하는 것이 좋습니다. 장기 서비스 계정 키 파일 없이도 동일한 인증 흐름을 사용할 수 있습니다.
+
+### Vertex AI: 서비스 계정 JSON
+
+서비스 계정 JSON을 사용할 경우 앱의 연결 설정에서 파일을 선택하거나, ADC가 읽을 수 있도록 `GOOGLE_APPLICATION_CREDENTIALS`에 저장소 **밖**의 절대 경로를 지정합니다.
+
+PowerShell:
+
+```powershell
+$env:GOOGLE_APPLICATION_CREDENTIALS = "C:\secure\<service-account-json>"
+$env:GOOGLE_CLOUD_PROJECT = "your-project-id"
+npm run dev
+```
+
+macOS/Linux:
+
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS="/secure/<service-account-json>"
+export GOOGLE_CLOUD_PROJECT="your-project-id"
+npm run dev
+```
+
+JSON 파일의 `project_id`와 화면 또는 환경 변수의 프로젝트가 일치하는지 확인하세요. Vertex AI 호출 주체에는 대상 프로젝트에서 모델을 호출할 수 있는 IAM 권한이 필요합니다.
+
+## 자격 증명 보안
+
+- 서비스 계정 JSON, API 키, `.env` 파일을 Git에 커밋하지 마세요.
+- 자격 증명 파일은 Vite가 접근할 수 있는 프로젝트 디렉터리 안에 두지 마세요. `.gitignore`는 커밋을 막을 뿐 로컬 개발 서버의 파일 노출까지 보장하지 않습니다.
+- 이미 Git에 올라간 키는 파일을 삭제하는 것만으로 안전해지지 않습니다. 해당 키를 즉시 폐기하고 새 키를 발급해야 합니다.
+- 클라이언트 코드, `VITE_` 환경 변수, 정적 HTML에는 비밀값을 넣지 마세요.
+- 운영 환경에서는 최소 권한 서비스 계정과 플랫폼의 secret manager를 사용하세요.
+
+## 문제 해결
+
+- `401` 또는 `403`: ADC 로그인 상태, 서비스 계정 IAM 권한, 대상 프로젝트를 확인합니다.
+- 프로젝트를 찾을 수 없음: 화면의 프로젝트 ID 또는 `GOOGLE_CLOUD_PROJECT`를 확인합니다.
+- 모델을 찾을 수 없음: 선택한 모델이 해당 프로젝트에서 Vertex AI로 제공되는지 확인합니다.
+- 검색 기능 오류: 선택한 공급자와 모델이 Google Search grounding을 지원하는지 확인합니다.
+- 설정을 바꾼 뒤에도 연결되지 않음: 서버를 재시작하고 앱에서 연결 테스트를 다시 실행합니다.
+
+## 개발 구조
+
+- `components/`, `hooks/`, `context/`: React UI와 상태 관리
+- `services/`: 클라이언트 API 어댑터와 프롬프트/응답 처리
+- `server/`: 자격 증명 보관 및 Gemini/Vertex AI 호출
+- `utils/`, `types.ts`: 공용 유틸리티와 데이터 타입
+
+주요 기술은 React 19, TypeScript, Vite, Node.js, `@google/genai`입니다.
+
+## 주의사항
+
+- 생성형 AI 요청에는 공급자별 요금과 할당량이 적용될 수 있습니다.
+- 높은 수위 설정에서는 거칠거나 공격적인 표현이 생성될 수 있습니다.
+- 생성된 게시글과 댓글은 모두 AI가 만든 허구입니다.
 
 ## License
 

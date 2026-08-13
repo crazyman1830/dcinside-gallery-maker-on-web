@@ -1,6 +1,9 @@
 
 import React from 'react';
-import { GEMINI_MODEL_TEXT, GEMINI_MODEL_PRO, GEMINI_MODEL_3_PRO, GEMINI_MODEL_3_5_FLASH } from '../constants';
+import { AI_MODELS } from '../constants';
+import { AiProvider } from '../types';
+import { useGalleryFormContext } from '../context/GalleryFormContext';
+import { AiConnectionSettings } from './AiConnectionSettings';
 
 interface AdvancedOptionsSectionProps {
   isQualityUpgradeUnlocked: boolean;
@@ -17,11 +20,34 @@ export const AdvancedOptionsSection: React.FC<AdvancedOptionsSectionProps> = ({
   isSearchEnabled,
   onSearchEnabledChange
 }) => {
+  const { selectedProvider, setSelectedProvider } = useGalleryFormContext();
+  const modelOptions = AI_MODELS[selectedProvider];
   const inputClass = "w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200 text-slate-700 placeholder-slate-400 outline-none appearance-none cursor-pointer";
   const labelClass = "block text-sm font-bold text-slate-700 mb-2";
 
   return (
     <div className="space-y-6">
+      <div>
+        <label htmlFor="providerSelect" className={labelClass}>AI 공급자 선택</label>
+        <div className="relative">
+          <select
+            id="providerSelect"
+            value={selectedProvider}
+            onChange={(event) => setSelectedProvider(event.target.value as AiProvider)}
+            className={inputClass}
+          >
+            <option value="gemini">Gemini Developer API</option>
+            <option value="vertex">Google Cloud Vertex AI</option>
+          </select>
+          <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-slate-500">
+            <i className="fas fa-chevron-down text-xs"></i>
+          </div>
+        </div>
+        <p className="text-xs text-slate-400 mt-2 ml-1">
+          공급자 선택은 프리셋에 저장되지만 API 키나 서비스 계정 JSON은 저장되지 않습니다.
+        </p>
+      </div>
+
       {isQualityUpgradeUnlocked && (
         <div>
           <label htmlFor="modelSelect" className={labelClass}>AI 모델 선택</label>
@@ -32,10 +58,9 @@ export const AdvancedOptionsSection: React.FC<AdvancedOptionsSectionProps> = ({
                 onChange={(e) => onSelectedModelChange(e.target.value)}
                 className={inputClass}
             >
-                <option value={GEMINI_MODEL_TEXT}>Gemini 3 Flash Preview (빠름, 가벼움)</option>
-                <option value={GEMINI_MODEL_PRO}>Gemini 3.1 Flash Lite Preview (가벼움)</option>
-                <option value={GEMINI_MODEL_3_5_FLASH}>Gemini 3.5 Flash (가장 빠름)</option>
-                <option value={GEMINI_MODEL_3_PRO}>Gemini 3.1 Pro Preview (최신, 강력함, 추천)</option>
+                {modelOptions.map((model) => (
+                  <option key={model.value} value={model.value}>{model.label}</option>
+                ))}
             </select>
             <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-slate-500">
                 <i className="fas fa-chevron-down text-xs"></i>
@@ -66,6 +91,11 @@ export const AdvancedOptionsSection: React.FC<AdvancedOptionsSectionProps> = ({
           </div>
         </label>
       </div>
+
+      <AiConnectionSettings
+        selectedProvider={selectedProvider}
+        selectedModel={selectedModel}
+      />
     </div>
   );
 };
