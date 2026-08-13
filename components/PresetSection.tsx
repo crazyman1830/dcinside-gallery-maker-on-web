@@ -83,6 +83,10 @@ export const PresetSection: React.FC<PresetSectionProps> = ({
             <i className="fas fa-trash-alt"></i>
           </button>
         </div>
+        <p className="text-xs text-slate-500 mt-3 ml-1">
+          <i className="fas fa-shield-alt mr-1"></i>
+          AI 공급자, 모델, 웹 검색 및 연결 설정은 프리셋을 불러와도 변경되지 않습니다.
+        </p>
         {presets.length === 0 && <p className="text-xs text-slate-400 mt-3 ml-1"><i className="fas fa-info-circle mr-1"></i>저장된 프리셋이 없습니다.</p>}
       </div>
 

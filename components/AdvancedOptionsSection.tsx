@@ -44,7 +44,7 @@ export const AdvancedOptionsSection: React.FC<AdvancedOptionsSectionProps> = ({
           </div>
         </div>
         <p className="text-xs text-slate-400 mt-2 ml-1">
-          공급자 선택은 프리셋에 저장되지만 API 키나 서비스 계정 JSON은 저장되지 않습니다.
+          공급자·모델·검색·연결 설정은 프리셋을 불러와도 현재 값을 유지합니다.
         </p>
       </div>
 

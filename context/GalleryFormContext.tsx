@@ -20,6 +20,7 @@ import {
 import { AiProvider, GalleryFormSettings, UserNicknameType } from '../types';
 import { AI_MODELS, DEFAULT_AI_PROVIDER, DEFAULT_MODEL_BY_PROVIDER } from '../constants';
 import { generateRandomIp } from '../utils/common';
+import { getPresetContentSettings } from '../services/presetService';
 
 export interface GalleryFormValidationErrors {
     topic?: string;
@@ -194,28 +195,23 @@ export const GalleryFormProvider: React.FC<ProviderProps> = ({ children, initial
     const specificAgeGroupOptions = useMemo(() => AGE_RANGE_OPTIONS.filter(opt => opt.value !== DEFAULT_AGE_RANGE), []);
 
     const applyPreset = useCallback((settings: GalleryFormSettings) => {
-        setTopic(settings.topic);
-        setDiscussionContext(settings.discussionContext);
-        setSelectedWorldview(settings.selectedWorldview);
-        setCustomWorldviewText(settings.customWorldviewText);
-        setSelectedWorldviewEra(settings.selectedWorldviewEra || DEFAULT_WORLDVIEW_ERA);
-        setSelectedToxicityLevel(settings.selectedToxicityLevel);
-        setSelectedAnonymousNickRatio(settings.selectedAnonymousNickRatio);
-        setUserSpecies(settings.userSpecies);
-        setUserAffiliation(settings.userAffiliation);
-        setIsManualGenderRatio(settings.isManualGenderRatio);
-        setManualMalePercentage(settings.manualMalePercentage);
-        setIsManualAgeRange(settings.isManualAgeRange);
-        setManualSelectedAgeGroups(new Set(settings.manualSelectedAgeGroups));
-        setIsQualityUpgradeUnlocked(settings.isQualityUpgradeUnlocked);
-        setIsQualityUpgradeEnabled(settings.isQualityUpgradeEnabled);
-        setIsSearchEnabled(settings.isSearchEnabled);
-        const provider = getValidProvider(settings.selectedProvider);
-        setSelectedProviderState(provider);
-        setSelectedModel(getValidModel(provider, settings.selectedModel));
-        setUserNicknameType(settings.userNicknameType);
-        setFixedNickname(settings.fixedNickname);
-        setUserReputation(settings.userReputation);
+        const content = getPresetContentSettings(settings);
+        setTopic(content.topic);
+        setDiscussionContext(content.discussionContext);
+        setSelectedWorldview(content.selectedWorldview);
+        setCustomWorldviewText(content.customWorldviewText);
+        setSelectedWorldviewEra(content.selectedWorldviewEra || DEFAULT_WORLDVIEW_ERA);
+        setSelectedToxicityLevel(content.selectedToxicityLevel);
+        setSelectedAnonymousNickRatio(content.selectedAnonymousNickRatio);
+        setUserSpecies(content.userSpecies);
+        setUserAffiliation(content.userAffiliation);
+        setIsManualGenderRatio(content.isManualGenderRatio);
+        setManualMalePercentage(content.manualMalePercentage);
+        setIsManualAgeRange(content.isManualAgeRange);
+        setManualSelectedAgeGroups(new Set(content.manualSelectedAgeGroups));
+        setUserNicknameType(content.userNicknameType);
+        setFixedNickname(content.fixedNickname);
+        setUserReputation(content.userReputation);
     }, []);
 
     const getCurrentSettings = useCallback((): GalleryFormSettings => {

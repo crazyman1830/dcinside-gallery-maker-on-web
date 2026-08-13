@@ -8,6 +8,29 @@ import {
 
 const STORAGE_KEY = 'user_presets';
 
+export const ADVANCED_PRESET_FIELDS = [
+  'isQualityUpgradeUnlocked',
+  'isQualityUpgradeEnabled',
+  'isSearchEnabled',
+  'selectedProvider',
+  'selectedModel',
+] as const satisfies ReadonlyArray<keyof GalleryFormSettings>;
+
+type AdvancedPresetField = typeof ADVANCED_PRESET_FIELDS[number];
+export type PresetContentSettings = Omit<GalleryFormSettings, AdvancedPresetField>;
+
+/**
+ * Presets describe the gallery scenario only. Runtime/provider choices in the
+ * advanced section belong to the current session and must survive preset loads.
+ */
+export const getPresetContentSettings = (
+  settings: GalleryFormSettings,
+): PresetContentSettings => {
+  const contentSettings = { ...settings } as Partial<GalleryFormSettings>;
+  for (const field of ADVANCED_PRESET_FIELDS) delete contentSettings[field];
+  return contentSettings as PresetContentSettings;
+};
+
 export const migratePreset = (preset: Preset): Preset => {
   const selectedProvider = preset.settings.selectedProvider ?? DEFAULT_AI_PROVIDER;
   return {

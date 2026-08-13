@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { GalleryFormSettings, Preset } from '../types';
-import { migratePreset } from '../services/presetService';
+import {
+  ADVANCED_PRESET_FIELDS,
+  getPresetContentSettings,
+  migratePreset,
+} from '../services/presetService';
 
 const legacySettings: GalleryFormSettings = {
   topic: 'test',
@@ -33,5 +37,21 @@ describe('preset migration', () => {
     expect(migrated.settings.selectedProvider).toBe('gemini');
     expect(migrated.settings.selectedModel).toBe('gemini-3.5-flash-lite');
     expect(JSON.stringify(migrated)).not.toMatch(/apiKey|private_key|credentials/i);
+  });
+
+  it('excludes every advanced setting when a preset is applied', () => {
+    const content = getPresetContentSettings({
+      ...legacySettings,
+      selectedProvider: 'vertex',
+      selectedModel: 'gemini-3.1-pro-preview',
+      isSearchEnabled: true,
+      isQualityUpgradeUnlocked: false,
+      isQualityUpgradeEnabled: true,
+    });
+
+    expect(content.topic).toBe('test');
+    for (const field of ADVANCED_PRESET_FIELDS) {
+      expect(content).not.toHaveProperty(field);
+    }
   });
 });
