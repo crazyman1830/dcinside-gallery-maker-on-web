@@ -84,6 +84,7 @@ const App: React.FC = () => {
     (postId: string) => {
       selectPost(postId);
       setView('post');
+      requestAnimationFrame(() => document.getElementById('post-title')?.focus());
     },
     [selectPost],
   );
@@ -98,15 +99,27 @@ const App: React.FC = () => {
     backToList();
     setView('setup');
     window.scrollTo({ top: 0, behavior: 'auto' });
+    requestAnimationFrame(() => document.getElementById('setup-title')?.focus());
   }, [backToList]);
 
   const handleSavePost = useCallback(
     async (title: string, author: string, content: string) => {
       const saved = await saveUserPost(title, author, content);
-      if (saved) setView('post');
+      if (saved) {
+        setView('post');
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => document.getElementById('post-title')?.focus());
+        });
+      }
+      return saved;
     },
     [saveUserPost],
   );
+
+  const handleOpenWriteModal = useCallback(() => {
+    setError(null);
+    openWriteModal();
+  }, [openWriteModal, setError]);
 
   const handleReturnToGallery = useCallback(() => {
     setView('gallery-list');
@@ -148,7 +161,11 @@ const App: React.FC = () => {
         {view === 'setup' && (
           <section aria-labelledby="setup-title">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <h2 id="setup-title" className="text-xl font-bold text-slate-800">
+              <h2
+                id="setup-title"
+                tabIndex={-1}
+                className="text-xl font-bold text-slate-800 outline-none"
+              >
                 갤러리 설정
               </h2>
               {galleryData && !isLoading && (
@@ -220,7 +237,7 @@ const App: React.FC = () => {
                     post={selectedPost}
                     currentUserProfile={currentUserProfile}
                     onBackToList={handleBackToList}
-                    onWritePost={openWriteModal}
+                    onWritePost={handleOpenWriteModal}
                     onAddComment={addUserComment}
                     isAddingComment={isAddingComment}
                     maxComments={MAX_TOTAL_COMMENTS_PER_POST}
@@ -233,7 +250,7 @@ const App: React.FC = () => {
                 <PostList
                   posts={galleryData.posts}
                   onSelectPost={handleSelectPost}
-                  onWritePost={openWriteModal}
+                  onWritePost={handleOpenWriteModal}
                 />
               )}
             </div>
@@ -256,6 +273,7 @@ const App: React.FC = () => {
             onClose={closeWriteModal}
             onSave={handleSavePost}
             isSaving={isSavingUserPost}
+            submissionError={error}
           />
         )}
       </main>

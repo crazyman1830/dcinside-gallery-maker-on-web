@@ -1,6 +1,13 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
+const browserErrorsByPage = new WeakMap<Page, string[]>();
+const allowedBrowserErrorsByPage = new WeakMap<Page, RegExp[]>();
+
+const allowBrowserErrors = (page: Page, ...patterns: RegExp[]) => {
+  allowedBrowserErrorsByPage.set(page, patterns);
+};
+
 const isoTimestamp = '2026-08-14T06:00:00.000Z';
 const mockGallery = {
   galleryTitle: '품질 테스트 갤러리',
@@ -47,6 +54,7 @@ const mockCredentials = async (page: Page) => {
           gemini: { configured: true },
           vertex: { configured: false },
         },
+        capabilities: { vertexAdc: false },
       }),
     });
   });
@@ -75,14 +83,25 @@ const submitMockGallery = async (page: Page) => {
 };
 
 test.beforeEach(async ({ page }) => {
-  page.on('pageerror', error =>
-    console.error(`Browser page error: ${error.stack ?? error.message}`),
-  );
+  const browserErrors: string[] = [];
+  browserErrorsByPage.set(page, browserErrors);
+  page.on('pageerror', error => {
+    browserErrors.push(`Page error: ${error.stack ?? error.message}`);
+  });
   page.on('console', message => {
-    if (message.type() === 'error') console.error(`Browser console error: ${message.text()}`);
+    if (message.type() === 'error') browserErrors.push(`Console error: ${message.text()}`);
   });
   await mockCredentials(page);
   await mockGeneration(page);
+});
+
+test.afterEach(async ({ page }) => {
+  const allowedPatterns = allowedBrowserErrorsByPage.get(page) ?? [];
+  const unexpectedErrors = (browserErrorsByPage.get(page) ?? []).filter(
+    message => !allowedPatterns.some(pattern => pattern.test(message)),
+  );
+
+  expect(unexpectedErrors, 'Unexpected browser errors were emitted during the test.').toEqual([]);
 });
 
 test('keyboard desktop flow persists voting and comments across reloads', async ({ page }) => {
@@ -100,13 +119,22 @@ test('keyboard desktop flow persists voting and comments across reloads', async 
   await expectNoSeriousA11yViolations(page);
   await submitMockGallery(page);
 
-  const postLink = page.getByRole('link', { name: '게시물 첫 번째 테스트 글 보기' });
-  await postLink.focus();
-  await page.keyboard.press('Enter');
+  const postButton = page.getByRole('button', { name: '게시물 첫 번째 테스트 글 보기' });
+  const postRow = page.getByRole('row').filter({ has: postButton });
+  await expect(postRow).not.toHaveAttribute('role', 'link');
+  expect(await postRow.getAttribute('tabindex')).toBeNull();
+  await postButton.focus();
+  await page.keyboard.press('Space');
   await expect(page.getByText('외부 AI 호출 없이 제공된 mock 게시물입니다.')).toBeVisible();
-  await page.getByRole('button', { name: '추천 7개' }).focus();
+  const recommend = page.getByRole('button', { name: '추천 7개' });
+  const nonRecommend = page.getByRole('button', { name: '비추천 1개' });
+  await expect(recommend).toHaveAttribute('aria-pressed', 'false');
+  await expect(nonRecommend).toHaveAttribute('aria-pressed', 'false');
+  await recommend.focus();
   await page.keyboard.press('Enter');
-  await expect(page.getByRole('button', { name: '추천 8개' })).toBeVisible();
+  const selectedRecommend = page.getByRole('button', { name: '추천 8개' });
+  await expect(selectedRecommend).toHaveAttribute('aria-pressed', 'true');
+  await expect(nonRecommend).toHaveAttribute('aria-pressed', 'false');
 
   await page.getByLabel('댓글 내용').fill('사용자가 남긴 댓글입니다.');
   await page.getByRole('button', { name: '등록', exact: true }).focus();
@@ -117,7 +145,7 @@ test('keyboard desktop flow persists voting and comments across reloads', async 
 
   await page.reload();
   await expect(page.getByRole('heading', { name: '품질 테스트 갤러리' })).toBeVisible();
-  await page.getByRole('link', { name: '게시물 첫 번째 테스트 글 보기' }).click();
+  await page.getByRole('button', { name: '게시물 첫 번째 테스트 글 보기' }).click();
   await expect(page.getByRole('button', { name: '추천 8개' })).toBeVisible();
   await expect(
     page.getByLabel(/의 댓글/).filter({ hasText: '사용자가 남긴 댓글입니다.' }),
@@ -127,6 +155,7 @@ test('keyboard desktop flow persists voting and comments across reloads', async 
 });
 
 test('keeps the user comment when the mocked AI follow-up fails', async ({ page }) => {
+  allowBrowserErrors(page, /502 \(Bad Gateway\)/u, /mock provider failure/u);
   await page.route('**/api/ai/comments/follow-up', async route => {
     await route.fulfill({
       status: 502,
@@ -137,7 +166,7 @@ test('keeps the user comment when the mocked AI follow-up fails', async ({ page 
 
   await page.goto('/');
   await submitMockGallery(page);
-  await page.getByRole('link', { name: '게시물 첫 번째 테스트 글 보기' }).click();
+  await page.getByRole('button', { name: '게시물 첫 번째 테스트 글 보기' }).click();
   await page.getByLabel('댓글 내용').fill('부분 실패에도 남아야 하는 댓글');
   await page.getByRole('button', { name: '등록', exact: true }).click();
 
@@ -185,5 +214,19 @@ test('mobile setup remains usable and has no serious accessibility violations', 
   await expect(
     page.getByText('공식 표시·저장 조건을 충족하는 전용 흐름을 준비 중입니다.'),
   ).toBeVisible();
+  await page.getByRole('button', { name: '내 프로필 설정' }).click();
+  const anonymous = page.getByRole('button', { name: /유동닉/ });
+  const fixed = page.getByRole('button', { name: /고정닉/ });
+  await expect(anonymous).toHaveAttribute('aria-pressed', 'true');
+  await expect(fixed).toHaveAttribute('aria-pressed', 'false');
+  await fixed.click();
+  await expect(anonymous).toHaveAttribute('aria-pressed', 'false');
+  await expect(fixed).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('slider', { name: '갤러리 내 인지도/호감도' })).toHaveAttribute(
+    'aria-valuetext',
+    /50점/,
+  );
+  await expect(page.getByLabel('닉네임 입력')).toHaveAttribute('aria-required', 'true');
+  await page.getByRole('button', { name: '내 프로필 설정' }).click();
   await expectNoSeriousA11yViolations(page);
 });

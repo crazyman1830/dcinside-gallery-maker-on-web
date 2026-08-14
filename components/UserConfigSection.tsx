@@ -46,7 +46,7 @@ export const UserConfigSection: React.FC<UserConfigSectionProps> = ({
     'w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200 text-slate-700 placeholder-slate-500 outline-none';
   const labelClass = 'block text-sm font-bold text-slate-700 mb-2';
   const checkboxClass =
-    'h-5 w-5 text-blue-600 border-slate-300 rounded focus:ring-blue-500 transition-all cursor-pointer';
+    'h-5 w-5 text-blue-600 border-slate-300 rounded transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2';
 
   return (
     <div className="space-y-6">
@@ -67,7 +67,7 @@ export const UserConfigSection: React.FC<UserConfigSectionProps> = ({
             aria-describedby={errors.userSpecies ? 'user-species-error' : undefined}
           />
           {errors.userSpecies && (
-            <p id="user-species-error" role="alert" className="text-xs text-red-500 mt-1.5">
+            <p id="user-species-error" role="alert" className="text-xs text-red-600 mt-1.5">
               {errors.userSpecies}
             </p>
           )}
@@ -88,7 +88,7 @@ export const UserConfigSection: React.FC<UserConfigSectionProps> = ({
             aria-describedby={errors.userAffiliation ? 'user-affiliation-error' : undefined}
           />
           {errors.userAffiliation && (
-            <p id="user-affiliation-error" role="alert" className="text-xs text-red-500 mt-1.5">
+            <p id="user-affiliation-error" role="alert" className="text-xs text-red-600 mt-1.5">
               {errors.userAffiliation}
             </p>
           )}
@@ -97,7 +97,9 @@ export const UserConfigSection: React.FC<UserConfigSectionProps> = ({
 
       <div className="pt-4 border-t border-slate-100">
         <div className="flex items-center justify-between mb-3">
-          <span className={labelClass}>사용자 성비</span>
+          <span id="gender-ratio-label" className={labelClass}>
+            사용자 성비
+          </span>
           <div className="flex items-center">
             <input
               type="checkbox"
@@ -105,6 +107,7 @@ export const UserConfigSection: React.FC<UserConfigSectionProps> = ({
               checked={isManualGenderRatio}
               onChange={e => onIsManualGenderRatioChange(e.target.checked)}
               className={checkboxClass}
+              aria-label="사용자 성비 수동 설정"
             />
             <label
               htmlFor="manualGenderRatioCheckbox"
@@ -125,7 +128,9 @@ export const UserConfigSection: React.FC<UserConfigSectionProps> = ({
               step="1"
               value={manualMalePercentage}
               onChange={e => onManualMalePercentageChange(Number(e.target.value))}
-              className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+              aria-labelledby="gender-ratio-label"
+              aria-valuetext={`남성 ${manualMalePercentage}%, 여성 ${100 - manualMalePercentage}%`}
+              className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
             />
             <div className="flex justify-between mt-2 text-sm font-medium">
               <span className="text-blue-600">남성 {manualMalePercentage}%</span>
@@ -152,6 +157,7 @@ export const UserConfigSection: React.FC<UserConfigSectionProps> = ({
               checked={isManualAgeRange}
               onChange={e => onIsManualAgeRangeChange(e.target.checked)}
               className={checkboxClass}
+              aria-label="사용자 연령대 수동 설정"
             />
             <label
               htmlFor="manualAgeRangeCheckbox"
@@ -189,7 +195,7 @@ export const UserConfigSection: React.FC<UserConfigSectionProps> = ({
                     aria-describedby={
                       errors.manualSelectedAgeGroups ? 'manual-age-groups-error' : undefined
                     }
-                    className="h-4 w-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500 mr-2"
+                    className="h-4 w-4 text-blue-600 border-slate-300 rounded mr-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
                   />
                   <span
                     className={`text-sm ${manualSelectedAgeGroups.has(option.value) ? 'text-blue-700 font-semibold' : 'text-slate-600'}`}

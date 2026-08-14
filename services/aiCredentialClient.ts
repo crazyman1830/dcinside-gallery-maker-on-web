@@ -1,4 +1,5 @@
 import { AiProvider, VertexAuthMode } from '../types';
+import { readApiError } from './apiError';
 
 export interface ProviderCredentialStatus {
   configured: boolean;
@@ -15,6 +16,9 @@ export interface AiCredentialStatus {
     gemini: ProviderCredentialStatus;
     vertex: VertexCredentialStatus;
   };
+  capabilities?: {
+    vertexAdc: boolean;
+  };
 }
 
 type JsonRecord = Record<string, unknown>;
@@ -30,6 +34,7 @@ const getOptionalString = (record: JsonRecord, key: string): string | undefined 
 const normalizeStatus = (value: unknown): AiCredentialStatus => {
   const root = isRecord(value) ? value : {};
   const providers = isRecord(root.providers) ? root.providers : {};
+  const capabilities = isRecord(root.capabilities) ? root.capabilities : {};
   const gemini = isRecord(providers.gemini) ? providers.gemini : {};
   const vertex = isRecord(providers.vertex) ? providers.vertex : {};
   const rawAuthMode = getOptionalString(vertex, 'authMode');
@@ -46,6 +51,9 @@ const normalizeStatus = (value: unknown): AiCredentialStatus => {
         location: getOptionalString(vertex, 'location'),
       },
     },
+    ...(typeof capabilities.vertexAdc === 'boolean'
+      ? { capabilities: { vertexAdc: capabilities.vertexAdc } }
+      : {}),
   };
 };
 
@@ -60,14 +68,7 @@ const request = async (path: string, init?: RequestInit): Promise<unknown> => {
   });
 
   if (!response.ok) {
-    let message = `자격증명 요청에 실패했습니다. (HTTP ${response.status})`;
-    try {
-      const payload = (await response.json()) as { error?: unknown };
-      if (typeof payload.error === 'string' && payload.error) message = payload.error;
-    } catch {
-      // Keep the status-only fallback for non-JSON responses.
-    }
-    throw new Error(message);
+    throw await readApiError(response, '자격증명 요청에 실패했습니다.');
   }
 
   if (response.status === 204) return undefined;

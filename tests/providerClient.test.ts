@@ -12,7 +12,7 @@ vi.mock('@google/genai', () => ({
   },
 }));
 
-import { MODEL_ALLOWLIST, assertModelAllowed, createProviderClient } from '../server/ai/provider';
+import { createProviderClient } from '../server/ai/provider';
 import { SessionCredentialStore } from '../server/sessionStore';
 
 const serviceAccount = {
@@ -28,9 +28,11 @@ describe('provider client factory', () => {
     sdk.constructorOptions.length = 0;
   });
 
-  it('creates a Gemini client with only the session API key', () => {
+  it('requires a session API key and passes only that key to Gemini', () => {
     const store = new SessionCredentialStore();
     const session = store.create();
+
+    expect(() => createProviderClient(session.id, 'gemini', store)).toThrow();
     store.setGemini(session.id, 'gemini-test-key');
 
     createProviderClient(session.id, 'gemini', store);
@@ -82,14 +84,5 @@ describe('provider client factory', () => {
         location: 'global',
       },
     ]);
-  });
-
-  it('rejects missing credentials and models outside each provider allowlist', () => {
-    const store = new SessionCredentialStore();
-    const session = store.create();
-
-    expect(() => createProviderClient(session.id, 'gemini', store)).toThrow();
-    expect(() => assertModelAllowed('vertex', 'gemini-3.6-flash')).toThrow();
-    expect(() => assertModelAllowed('gemini', MODEL_ALLOWLIST.gemini[0])).not.toThrow();
   });
 });

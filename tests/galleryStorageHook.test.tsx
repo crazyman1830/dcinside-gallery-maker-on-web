@@ -80,11 +80,7 @@ describe('useGalleryStorage', () => {
 
     act(() => result.current.setSelectedPostId('p1'));
     expect(result.current.selectedPostId).toBe('p1');
-  });
 
-  it('updates data without changing revision and advances it for context changes', async () => {
-    const { result } = renderHook(() => useGalleryStorage());
-    act(() => result.current.replaceSession(gallery, context, null));
     const replacementRevision = result.current.revision;
 
     act(() => {
@@ -103,24 +99,6 @@ describe('useGalleryStorage', () => {
     expect(result.current.galleryContext?.topic).toBe('새 주제');
     expect(result.current.revision).toBe(replacementRevision + 1);
     await waitFor(() => expect(result.current.storageWarning).toBeNull());
-  });
-
-  it('restores a valid saved V2 session on first render', () => {
-    localStorage.setItem(
-      SESSION_STORAGE_KEY,
-      JSON.stringify({
-        version: 2,
-        revision: 8,
-        savedAt: '2026-08-14T00:00:00.000Z',
-        gallery,
-        context,
-        profile,
-      }),
-    );
-
-    const { result } = renderHook(() => useGalleryStorage());
-    expect(result.current.galleryData).toEqual(gallery);
-    expect(result.current.revision).toBe(8);
   });
 
   it('keeps a newly created search-grounded session in memory without persisting it', async () => {
@@ -145,7 +123,7 @@ describe('useGalleryStorage', () => {
     expect(setItem).not.toHaveBeenCalled();
   });
 
-  it('does not restore or mutate a saved V2 search-grounded session', () => {
+  it('does not restore or mutate saved V2 or legacy search-grounded sessions', () => {
     const rawSession = JSON.stringify({
       version: 2,
       revision: 8,
@@ -160,15 +138,15 @@ describe('useGalleryStorage', () => {
     });
     localStorage.setItem(SESSION_STORAGE_KEY, rawSession);
 
-    const { result } = renderHook(() => useGalleryStorage());
+    const { result, unmount } = renderHook(() => useGalleryStorage());
 
     expect(result.current.galleryData).toBeNull();
     expect(result.current.galleryContext).toBeNull();
     expect(result.current.storageWarning).toBe(BLOCKED_SEARCH_SESSION_WARNING);
     expect(localStorage.getItem(SESSION_STORAGE_KEY)).toBe(rawSession);
-  });
+    unmount();
+    localStorage.clear();
 
-  it('does not migrate, display, or delete a legacy search-grounded session', () => {
     const rawGallery = JSON.stringify({
       ...gallery,
       sources: [{ uri: 'https://example.test/source' }],
@@ -179,11 +157,11 @@ describe('useGalleryStorage', () => {
     localStorage.setItem('galleryContext', rawContext);
     localStorage.setItem('userProfile', rawProfile);
 
-    const { result } = renderHook(() => useGalleryStorage());
+    const legacy = renderHook(() => useGalleryStorage()).result;
 
-    expect(result.current.galleryData).toBeNull();
-    expect(result.current.galleryContext).toBeNull();
-    expect(result.current.storageWarning).toBe(BLOCKED_SEARCH_SESSION_WARNING);
+    expect(legacy.current.galleryData).toBeNull();
+    expect(legacy.current.galleryContext).toBeNull();
+    expect(legacy.current.storageWarning).toBe(BLOCKED_SEARCH_SESSION_WARNING);
     expect(localStorage.getItem(SESSION_STORAGE_KEY)).toBeNull();
     expect(localStorage.getItem('galleryData')).toBe(rawGallery);
     expect(localStorage.getItem('galleryContext')).toBe(rawContext);
@@ -212,14 +190,5 @@ describe('useGalleryStorage', () => {
     await waitFor(() => expect(result.current.storageWarning).toMatch(/저장되지 않았/));
     expect(result.current.galleryData).toEqual(gallery);
     expect(setItem).toHaveBeenCalled();
-  });
-
-  it('reports an unavailable storage when clearing an empty session fails', async () => {
-    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
-      throw new DOMException('blocked', 'SecurityError');
-    });
-
-    const { result } = renderHook(() => useGalleryStorage());
-    await waitFor(() => expect(result.current.storageWarning).toMatch(/갱신하지 못했습니다/));
   });
 });

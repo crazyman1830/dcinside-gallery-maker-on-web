@@ -9,6 +9,7 @@ import {
   registerVertexServiceAccount,
   testAiCredential,
 } from '../services/aiCredentialClient';
+import { ApiError } from '../services/apiError';
 import { useUIState } from '../hooks/useUIState';
 import { useVoting } from '../hooks/useVoting';
 
@@ -34,6 +35,7 @@ describe('AI credential client', () => {
             location: 'global',
           },
         },
+        capabilities: { vertexAdc: false },
       }),
     );
     await expect(getAiCredentialStatus()).resolves.toEqual({
@@ -46,6 +48,7 @@ describe('AI credential client', () => {
           location: 'global',
         },
       },
+      capabilities: { vertexAdc: false },
     });
 
     vi.mocked(fetch).mockResolvedValueOnce(
@@ -119,8 +122,23 @@ describe('AI credential client', () => {
   });
 
   it('uses a safe server error and status fallback', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ error: '연결 거부' }, 403));
-    await expect(registerGeminiCredential('bad')).rejects.toThrow('연결 거부');
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse(
+        { error: '연결 거부', code: 'INVALID_CREDENTIAL', retryable: false, requestId: 'req-1' },
+        403,
+      ),
+    );
+    const structuredError = await registerGeminiCredential('bad').catch(
+      reason => reason as unknown,
+    );
+    expect(structuredError).toBeInstanceOf(ApiError);
+    expect(structuredError).toMatchObject({
+      message: '연결 거부',
+      status: 403,
+      code: 'INVALID_CREDENTIAL',
+      retryable: false,
+      requestId: 'req-1',
+    });
 
     vi.mocked(fetch).mockResolvedValueOnce(new Response('not json', { status: 500 }));
     await expect(registerGeminiCredential('bad')).rejects.toThrow('HTTP 500');

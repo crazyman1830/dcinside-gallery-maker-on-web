@@ -4,16 +4,6 @@ import type { AiProvider, VertexAuthMode } from '../types';
 export const SESSION_TTL_MS = 8 * 60 * 60 * 1_000;
 export const DEFAULT_MAX_SESSIONS = 128;
 
-export class SessionCapacityError extends Error {
-  readonly status = 503;
-  readonly code = 'SESSION_CAPACITY';
-
-  constructor() {
-    super('로컬 세션 수용량을 초과했습니다. 잠시 후 다시 시도해 주세요.');
-    this.name = 'SessionCapacityError';
-  }
-}
-
 export interface ServiceAccountCredential {
   type: 'service_account';
   project_id: string;
@@ -155,13 +145,11 @@ export class SessionCredentialStore {
 
     let evictionCandidate: SessionCredentials | undefined;
     for (const session of this.sessions.values()) {
-      if (session.gemini || session.vertex) continue;
       if (!evictionCandidate || session.lastAccess < evictionCandidate.lastAccess) {
         evictionCandidate = session;
       }
     }
-    if (!evictionCandidate) throw new SessionCapacityError();
-    this.sessions.delete(evictionCandidate.id);
+    if (evictionCandidate) this.sessions.delete(evictionCandidate.id);
   }
 }
 

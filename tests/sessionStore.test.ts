@@ -58,32 +58,30 @@ describe('SessionCredentialStore', () => {
     expect(store.status(second.id).providers.gemini.configured).toBe(true);
   });
 
-  it('uses sliding expiration and removes sessions at the TTL boundary', () => {
-    let now = 0;
-    const store = new SessionCredentialStore(() => now, 100);
-    const session = store.create();
+  it('uses sliding expiration while cleanup preserves active sessions', () => {
+    let slidingNow = 0;
+    const slidingStore = new SessionCredentialStore(() => slidingNow, 100);
+    const slidingSession = slidingStore.create();
 
-    now = 99;
-    expect(store.get(session.id)?.id).toBe(session.id);
-    now = 198;
-    expect(store.get(session.id)?.id).toBe(session.id);
-    now = 298;
-    expect(store.get(session.id)).toBeUndefined();
-    expect(store.size).toBe(0);
-  });
+    slidingNow = 99;
+    expect(slidingStore.get(slidingSession.id)?.id).toBe(slidingSession.id);
+    slidingNow = 198;
+    expect(slidingStore.get(slidingSession.id)?.id).toBe(slidingSession.id);
+    slidingNow = 298;
+    expect(slidingStore.get(slidingSession.id)).toBeUndefined();
+    expect(slidingStore.size).toBe(0);
 
-  it('cleans up all expired sessions without removing active sessions', () => {
-    let now = 0;
-    const store = new SessionCredentialStore(() => now, 100);
-    const expired = store.create();
-    now = 50;
-    const active = store.create();
-    now = 99;
-    expect(store.get(active.id)).toBeDefined();
-    now = 101;
+    let cleanupNow = 0;
+    const cleanupStore = new SessionCredentialStore(() => cleanupNow, 100);
+    const expired = cleanupStore.create();
+    cleanupNow = 50;
+    const active = cleanupStore.create();
+    cleanupNow = 99;
+    expect(cleanupStore.get(active.id)).toBeDefined();
+    cleanupNow = 101;
 
-    expect(store.cleanupExpired()).toBe(1);
-    expect(store.get(expired.id)).toBeUndefined();
-    expect(store.get(active.id)).toBeDefined();
+    expect(cleanupStore.cleanupExpired()).toBe(1);
+    expect(cleanupStore.get(expired.id)).toBeUndefined();
+    expect(cleanupStore.get(active.id)).toBeDefined();
   });
 });

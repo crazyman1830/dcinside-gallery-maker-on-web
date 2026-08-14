@@ -54,31 +54,7 @@ const createTestApp = (requestTimeoutMs?: number) => {
 };
 
 describe('generation provider routing', () => {
-  it('uses the same selected provider for model validation and client creation', async () => {
-    const { app, assertModelAllowed, getClient } = createTestApp();
-
-    await request(app)
-      .post('/api/ai/worldview-feedback')
-      .send({
-        selectedProvider: 'vertex',
-        selectedModel: 'vertex-model',
-        customWorldviewText: 'worldview',
-        galleryData: { galleryTitle: 'test', posts: [] },
-      })
-      .expect(200, { feedback: 'test feedback' });
-
-    expect(assertModelAllowed).toHaveBeenCalledWith('vertex', 'vertex-model');
-    expect(getClient).toHaveBeenCalledWith('session-1', 'vertex');
-    expect(engine.createWorldviewFeedback).toHaveBeenCalledWith(
-      expect.objectContaining({ models: {} }),
-      'worldview',
-      { galleryTitle: 'test', posts: [] },
-      'vertex-model',
-      expect.any(AbortSignal),
-    );
-  });
-
-  it('passes the selected provider client through gallery, evaluation/comment engine, and follow-ups', async () => {
+  it('passes the selected provider client through every generation route', async () => {
     const { app, assertModelAllowed, client, getClient } = createTestApp();
     const post = {
       id: 'post-1',
@@ -111,10 +87,19 @@ describe('generation provider routing', () => {
         galleryContext,
       })
       .expect(200);
+    await request(app)
+      .post('/api/ai/worldview-feedback')
+      .send({
+        selectedProvider: 'vertex',
+        selectedModel: 'vertex-model',
+        customWorldviewText: 'worldview',
+        galleryData: { galleryTitle: 'test', posts: [] },
+      })
+      .expect(200, { feedback: 'test feedback' });
 
-    expect(assertModelAllowed).toHaveBeenCalledTimes(3);
+    expect(assertModelAllowed).toHaveBeenCalledTimes(4);
     expect(assertModelAllowed).toHaveBeenCalledWith('vertex', 'vertex-model');
-    expect(getClient).toHaveBeenCalledTimes(3);
+    expect(getClient).toHaveBeenCalledTimes(4);
     expect(getClient).toHaveBeenCalledWith('session-1', 'vertex');
     expect(engine.createGallery).toHaveBeenCalledWith(
       client,
@@ -133,6 +118,13 @@ describe('generation provider routing', () => {
       post,
       [],
       expect.objectContaining({ selectedProvider: 'vertex' }),
+      expect.any(AbortSignal),
+    );
+    expect(engine.createWorldviewFeedback).toHaveBeenCalledWith(
+      client,
+      'worldview',
+      { galleryTitle: 'test', posts: [] },
+      'vertex-model',
       expect.any(AbortSignal),
     );
   });

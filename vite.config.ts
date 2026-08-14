@@ -7,13 +7,25 @@ export default defineConfig(() => {
 
   return {
     plugins: [react()],
+    build: {
+      rolldownOptions: {
+        output: {
+          codeSplitting: {
+            groups: [{ name: 'vendor', test: /node_modules[\\/]/ }],
+          },
+        },
+      },
+    },
     server: {
       fs: {
         deny: [
           '.env',
           '.env.*',
-          '*.{crt,pem,key,p12,pfx}',
+          '*.{crt,pem,key,p12,pfx,cer,der}',
+          '.npmrc',
+          '.yarnrc.yml',
           '**/.git/**',
+          '**/.secrets/**',
           '**/vertex/**',
           '**/credentials/**',
           '**/secrets/**',

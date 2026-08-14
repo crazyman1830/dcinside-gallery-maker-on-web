@@ -86,6 +86,24 @@ const isFatalEnrichmentError = (error: unknown): boolean => {
   return [401, 403, 404, 499, 504].includes(errorStatus(error) ?? 0);
 };
 
+const isProviderOutageError = (error: unknown): boolean => {
+  if (
+    error instanceof MalformedAiResponseError ||
+    (error as { code?: unknown })?.code === 'MALFORMED_AI_RESPONSE'
+  ) {
+    return false;
+  }
+  const status = errorStatus(error);
+  return status === 429 || (status !== undefined && status >= 500 && status <= 599);
+};
+
+class EnrichmentCircuitOpenError extends Error {
+  constructor() {
+    super('AI 공급자 장애로 남은 게시물 보강을 건너뜁니다.');
+    this.name = 'EnrichmentCircuitOpenError';
+  }
+}
+
 interface LinkedAbort {
   controller: AbortController;
   dispose: () => void;
@@ -301,6 +319,8 @@ export const createGallery = async (
   const posts: Post[] = [];
   const warnings: GenerationWarning[] = [];
   const evaluationModel = EVALUATION_MODEL_BY_PROVIDER[params.selectedProvider];
+  let evaluationCircuitOpen = false;
+  let commentsCircuitOpen = false;
 
   for (const [postIndex, generatedPost] of generatedGallery.posts
     .slice(0, NUMBER_OF_POSTS)
@@ -324,21 +344,26 @@ export const createGallery = async (
         throw error;
       }
     };
+    const circuitError = new EnrichmentCircuitOpenError();
     const [metricsResult, commentsResult] = await Promise.allSettled([
-      cancelSiblingOnFatal(
-        evaluatePost(ai, generatedPost, context, evaluationModel, enrichmentSignal),
-      ),
-      cancelSiblingOnFatal(
-        generateComments(
-          ai,
-          generatedPost,
-          context,
-          minComments,
-          maxComments,
-          params.selectedModel,
-          enrichmentSignal,
-        ),
-      ),
+      evaluationCircuitOpen
+        ? Promise.reject<Awaited<ReturnType<typeof evaluatePost>>>(circuitError)
+        : cancelSiblingOnFatal(
+            evaluatePost(ai, generatedPost, context, evaluationModel, enrichmentSignal),
+          ),
+      commentsCircuitOpen
+        ? Promise.reject<Awaited<ReturnType<typeof generateComments>>>(circuitError)
+        : cancelSiblingOnFatal(
+            generateComments(
+              ai,
+              generatedPost,
+              context,
+              minComments,
+              maxComments,
+              params.selectedModel,
+              enrichmentSignal,
+            ),
+          ),
     ]);
     enrichmentAbort.dispose();
     if (metricsResult.status === 'rejected' && isFatalEnrichmentError(metricsResult.reason)) {
@@ -346,6 +371,12 @@ export const createGallery = async (
     }
     if (commentsResult.status === 'rejected' && isFatalEnrichmentError(commentsResult.reason)) {
       throw commentsResult.reason;
+    }
+    if (metricsResult.status === 'rejected' && isProviderOutageError(metricsResult.reason)) {
+      evaluationCircuitOpen = true;
+    }
+    if (commentsResult.status === 'rejected' && isProviderOutageError(commentsResult.reason)) {
+      commentsCircuitOpen = true;
     }
 
     const metrics =

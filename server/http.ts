@@ -149,7 +149,10 @@ export const toPublicError = (error: unknown): PublicError => {
   if (status === 403)
     return {
       status,
-      message: '선택한 프로젝트 또는 모델을 사용할 권한이 없습니다.',
+      message:
+        code === 'ADC_DISABLED'
+          ? knownMessage
+          : '선택한 프로젝트 또는 모델을 사용할 권한이 없습니다.',
       code: code ?? 'AI_FORBIDDEN',
       retryable: false,
     };
@@ -185,7 +188,7 @@ export const toPublicError = (error: unknown): PublicError => {
       retryable: explicitRetryable !== false,
       retryAfterSeconds,
     };
-  if (status === 503 && code === 'SESSION_CAPACITY')
+  if (status === 503 && code === 'AI_PROVIDER_CAPACITY')
     return {
       status,
       message: knownMessage,

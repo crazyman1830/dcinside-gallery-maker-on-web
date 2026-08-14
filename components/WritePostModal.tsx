@@ -8,8 +8,9 @@ interface WritePostModalProps {
   isOpen: boolean;
   currentUserProfile: UserProfile | null;
   onClose: () => void;
-  onSave: (title: string, author: string, content: string) => Promise<void | boolean>;
+  onSave: (title: string, author: string, content: string) => Promise<boolean>;
   isSaving: boolean;
+  submissionError?: string | null;
 }
 
 const MAX_TITLE_LENGTH = 50;
@@ -27,6 +28,7 @@ export const WritePostModal: React.FC<WritePostModalProps> = ({
   onClose,
   onSave,
   isSaving,
+  submissionError,
 }) => {
   const [title, setTitle] = useState('');
   const [author, setAuthor] = useState('');
@@ -34,6 +36,7 @@ export const WritePostModal: React.FC<WritePostModalProps> = ({
   const [titleError, setTitleError] = useState('');
   const [authorError, setAuthorError] = useState('');
   const [contentError, setContentError] = useState('');
+  const [saveFailed, setSaveFailed] = useState(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const authorInputRef = useRef<HTMLInputElement>(null);
@@ -56,6 +59,7 @@ export const WritePostModal: React.FC<WritePostModalProps> = ({
       setTitleError('');
       setAuthorError('');
       setContentError('');
+      setSaveFailed(false);
       dialog.showModal();
       wasOpenRef.current = true;
       requestAnimationFrame(() => titleInputRef.current?.focus());
@@ -91,8 +95,16 @@ export const WritePostModal: React.FC<WritePostModalProps> = ({
 
   const handleSave = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (isSaving || !validate()) return;
-    await onSave(title.trim(), author.trim(), content.trim());
+    if (isSaving) return;
+    setSaveFailed(false);
+    if (!validate()) return;
+
+    try {
+      const saved = await onSave(title.trim(), author.trim(), content.trim());
+      if (!saved) setSaveFailed(true);
+    } catch {
+      setSaveFailed(true);
+    }
   };
 
   return (
@@ -124,6 +136,17 @@ export const WritePostModal: React.FC<WritePostModalProps> = ({
           </button>
         </div>
 
+        {saveFailed && (
+          <p
+            id="post-save-error"
+            role="alert"
+            className="mx-5 mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 sm:mx-6"
+          >
+            <i className="fas fa-exclamation-circle mr-2" aria-hidden="true" />
+            {submissionError || '글을 등록하지 못했습니다. 잠시 후 다시 시도해주세요.'}
+          </p>
+        )}
+
         <div className="space-y-5 overflow-y-auto p-5 sm:p-6">
           <div>
             <label htmlFor="postTitle" className="mb-2 block text-sm font-bold text-slate-700">
@@ -137,6 +160,7 @@ export const WritePostModal: React.FC<WritePostModalProps> = ({
               onChange={event => {
                 const nextValue = event.target.value;
                 setTitle(nextValue);
+                setSaveFailed(false);
                 if (titleError)
                   setTitleError(validateRequired(nextValue, '제목', MAX_TITLE_LENGTH));
               }}
@@ -145,6 +169,7 @@ export const WritePostModal: React.FC<WritePostModalProps> = ({
               placeholder="흥미로운 제목을 입력하세요"
               aria-invalid={!!titleError}
               aria-describedby={titleError ? 'post-title-error' : undefined}
+              aria-required="true"
             />
             {titleError && (
               <p
@@ -169,6 +194,7 @@ export const WritePostModal: React.FC<WritePostModalProps> = ({
               onChange={event => {
                 const nextValue = event.target.value;
                 setAuthor(nextValue);
+                setSaveFailed(false);
                 if (authorError)
                   setAuthorError(
                     validateRequired(nextValue, '닉네임', MAX_COMMENT_AUTHOR_LENGTH + 8),
@@ -178,6 +204,7 @@ export const WritePostModal: React.FC<WritePostModalProps> = ({
               className={`w-full rounded-xl border px-4 py-3 text-slate-700 outline-none transition-colors focus:ring-2 focus:ring-blue-500/20 ${authorError ? 'border-red-500 bg-red-50' : 'border-slate-200'} ${isProfileSet ? 'cursor-not-allowed bg-slate-100 text-slate-500' : 'bg-slate-50 focus:border-blue-500 focus:bg-white'}`}
               placeholder="닉네임"
               aria-invalid={!!authorError}
+              aria-required="true"
               aria-describedby={
                 [authorError ? 'post-author-error' : '', isProfileSet ? 'post-author-help' : '']
                   .filter(Boolean)
@@ -211,6 +238,7 @@ export const WritePostModal: React.FC<WritePostModalProps> = ({
               onChange={event => {
                 const nextValue = event.target.value;
                 setContent(nextValue);
+                setSaveFailed(false);
                 if (contentError)
                   setContentError(validateRequired(nextValue, '내용', MAX_CONTENT_LENGTH));
               }}
@@ -219,6 +247,7 @@ export const WritePostModal: React.FC<WritePostModalProps> = ({
               maxLength={MAX_CONTENT_LENGTH}
               placeholder="내용을 자유롭게 작성하세요."
               aria-invalid={!!contentError}
+              aria-required="true"
               aria-describedby={
                 contentError ? 'post-content-error post-content-count' : 'post-content-count'
               }

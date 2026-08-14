@@ -14,6 +14,11 @@ export const loopbackRequestGuard = (
     response.status(403).json({ error: '로컬 호스트 요청만 허용됩니다.' });
     return;
   }
+  const fetchSite = request.headers['sec-fetch-site'];
+  if (typeof fetchSite === 'string' && fetchSite !== 'same-origin' && fetchSite !== 'none') {
+    response.status(403).json({ error: '교차 사이트 로컬 요청은 허용되지 않습니다.' });
+    return;
+  }
   const origin = request.headers.origin;
   if (origin) {
     try {

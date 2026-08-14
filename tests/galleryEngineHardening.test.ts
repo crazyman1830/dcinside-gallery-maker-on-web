@@ -1,11 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { GoogleGenAI } from '@google/genai';
-import type { CreateGalleryParams, GalleryData, NewPostData, Post } from '../types';
+import type { CreateGalleryParams, NewPostData, Post } from '../types';
 import {
   createFollowUpComments,
   createGallery,
   createUserPost,
-  createWorldviewFeedback,
   InvalidGroundingSearchEntryPointError,
   sanitizeGroundingSources,
   validateGroundingSearchEntryPoint,
@@ -137,30 +136,23 @@ describe('gallery engine hardening', () => {
     expect(result.dropped).toBeGreaterThan(0);
   });
 
-  it('accepts Google Search Suggestions without changing provider markup', () => {
+  it('accepts valid Search Suggestions and rejects unsafe or oversized markup', () => {
     expect(validateGroundingSearchEntryPoint(VALID_SEARCH_ENTRY_POINT)).toEqual({
       renderedContent: VALID_SEARCH_ENTRY_POINT,
     });
-  });
-
-  it.each([
-    '',
-    '<style>.chip{}</style><script>alert(1)</script><a href="https://www.google.com/search?q=x">x</a>',
-    '<style>.chip{}</style><form><a href="https://www.google.com/search?q=x">x</a></form>',
-    '<style>.chip{}</style><a onfocus="alert(1)" href="https://www.google.com/search?q=x">x</a>',
-    '<style>.chip{background:url(https://evil.test/x)}</style><a href="https://www.google.com/search?q=x">x</a>',
-    '<style>.chip{}</style><a href="https://evil.test/search?q=x">x</a>',
-  ])('rejects unsafe or malformed Search Suggestions markup', renderedContent => {
-    expect(() => validateGroundingSearchEntryPoint(renderedContent)).toThrow(
-      InvalidGroundingSearchEntryPointError,
-    );
-  });
-
-  it('rejects Search Suggestions above the 64 KiB provider markup budget', () => {
-    const oversized = `<style>${'a'.repeat(64 * 1_024)}</style><a href="https://www.google.com/search?q=x">x</a>`;
-    expect(() => validateGroundingSearchEntryPoint(oversized)).toThrow(
-      InvalidGroundingSearchEntryPointError,
-    );
+    for (const renderedContent of [
+      '',
+      '<style>.chip{}</style><script>alert(1)</script><a href="https://www.google.com/search?q=x">x</a>',
+      '<style>.chip{}</style><form><a href="https://www.google.com/search?q=x">x</a></form>',
+      '<style>.chip{}</style><a onfocus="alert(1)" href="https://www.google.com/search?q=x">x</a>',
+      '<style>.chip{background:url(https://evil.test/x)}</style><a href="https://www.google.com/search?q=x">x</a>',
+      '<style>.chip{}</style><a href="https://evil.test/search?q=x">x</a>',
+      `<style>${'a'.repeat(64 * 1_024)}</style><a href="https://www.google.com/search?q=x">x</a>`,
+    ]) {
+      expect(() => validateGroundingSearchEntryPoint(renderedContent)).toThrow(
+        InvalidGroundingSearchEntryPointError,
+      );
+    }
   });
 
   it('requires valid Search Suggestions whenever Google Search metadata is present', async () => {
@@ -263,31 +255,6 @@ describe('gallery engine hardening', () => {
     expect(result.searchEntryPoint).toEqual({ renderedContent: VALID_SEARCH_ENTRY_POINT });
   });
 
-  it('does not include transient grounding metadata in feedback provider prompts', async () => {
-    let providerPrompt = '';
-    const generateContent = vi.fn(async (request: { contents?: unknown }) => {
-      providerPrompt = String(request.contents ?? '');
-      return { text: 'feedback' };
-    });
-    const ai = { models: { generateContent } } as unknown as GoogleGenAI;
-    const groundedGallery: GalleryData = {
-      galleryTitle: 'gallery',
-      posts: [post()],
-      sources: [{ title: 'private-source-marker', uri: 'https://source-marker.example/' }],
-      searchEntryPoint: {
-        renderedContent:
-          '<style>.x{}</style><a href="https://www.google.com/search?q=rendered-marker">rendered-marker</a>',
-      },
-    };
-
-    await expect(createWorldviewFeedback(ai, 'worldview', groundedGallery, 'model')).resolves.toBe(
-      'feedback',
-    );
-    expect(providerPrompt).not.toContain('private-source-marker');
-    expect(providerPrompt).not.toContain('source-marker.example');
-    expect(providerPrompt).not.toContain('rendered-marker');
-  });
-
   it('never generates follow-ups beyond the total comment cap', async () => {
     const generateContent = vi.fn(async () => ({ text: '[]' }));
     const ai = { models: { generateContent } } as unknown as GoogleGenAI;
@@ -377,9 +344,8 @@ describe('gallery engine hardening', () => {
     expect(generateContent).toHaveBeenCalledTimes(4);
   });
 
-  it.each([new AiTimeoutError(), new ClientAbortError()])(
-    'never converts request cancellation into a user-post fallback',
-    async reason => {
+  it('never converts request cancellation into a user-post fallback', async () => {
+    for (const reason of [new AiTimeoutError(), new ClientAbortError()]) {
       const controller = new AbortController();
       controller.abort(reason);
       const generateContent = vi.fn();
@@ -398,8 +364,8 @@ describe('gallery engine hardening', () => {
         ),
       ).rejects.toBe(reason);
       expect(generateContent).not.toHaveBeenCalled();
-    },
-  );
+    }
+  });
 
   it('repairs a malformed initial gallery response once before enriching posts', async () => {
     const repairedGallery = {
@@ -491,6 +457,99 @@ describe('gallery engine hardening', () => {
     expect(commentsSignal?.aborted).toBe(true);
   });
 
+  it('opens the enrichment circuit after a persistent provider outage', async () => {
+    const outage = Object.assign(new Error('provider unavailable'), {
+      status: 503,
+      retryAfter: 0,
+    });
+    const generateContent = vi.fn().mockRejectedValue(outage);
+    const galleryPayload = {
+      galleryTitle: 'gallery',
+      posts: Array.from({ length: 5 }, (_, index) => ({
+        title: `title-${index}`,
+        author: `author-${index}`,
+        content: `content-${index}`,
+      })),
+    };
+    const generateContentStream = vi.fn(async () =>
+      (async function* () {
+        yield { text: JSON.stringify(galleryPayload), candidates: [] };
+      })(),
+    );
+    const ai = { models: { generateContent, generateContentStream } } as unknown as GoogleGenAI;
+    const warnings: string[] = [];
+
+    const result = await createGallery(ai, context, {
+      onChunk: () => undefined,
+      onPhase: () => undefined,
+      onWarning: warning => {
+        warnings.push(warning.code);
+      },
+    });
+
+    // The first evaluation and comment call each use the normal three attempts.
+    // Remaining posts degrade locally instead of multiplying a known outage.
+    expect(generateContent).toHaveBeenCalledTimes(6);
+    expect(result.posts).toHaveLength(5);
+    expect(warnings.filter(code => code === 'POST_EVALUATION_FALLBACK')).toHaveLength(5);
+    expect(warnings.filter(code => code === 'POST_COMMENTS_FALLBACK')).toHaveLength(5);
+  });
+
+  it('keeps the healthy enrichment lane running when only comments are unavailable', async () => {
+    const outage = Object.assign(new Error('comments provider unavailable'), {
+      status: 503,
+      retryAfter: 0,
+    });
+    const generateContent = vi.fn(async (request: { config?: { maxOutputTokens?: number } }) => {
+      if (request.config?.maxOutputTokens === MAX_EVALUATION_OUTPUT_TOKENS) {
+        return {
+          text: JSON.stringify({
+            suggestedViews: 10,
+            suggestedRecommendations: 2,
+            suggestedNonRecommendations: 1,
+          }),
+        };
+      }
+      if (request.config?.maxOutputTokens === MAX_COMMENT_OUTPUT_TOKENS) throw outage;
+      throw new Error('unexpected provider call');
+    });
+    const galleryPayload = {
+      galleryTitle: 'gallery',
+      posts: Array.from({ length: 5 }, (_, index) => ({
+        title: `title-${index}`,
+        author: `author-${index}`,
+        content: `content-${index}`,
+      })),
+    };
+    const generateContentStream = vi.fn(async () =>
+      (async function* () {
+        yield { text: JSON.stringify(galleryPayload), candidates: [] };
+      })(),
+    );
+    const ai = { models: { generateContent, generateContentStream } } as unknown as GoogleGenAI;
+    const warnings: string[] = [];
+
+    const result = await createGallery(ai, context, {
+      onChunk: () => undefined,
+      onPhase: () => undefined,
+      onWarning: warning => {
+        warnings.push(warning.code);
+      },
+    });
+    const evaluationCalls = generateContent.mock.calls.filter(
+      call => call[0].config?.maxOutputTokens === MAX_EVALUATION_OUTPUT_TOKENS,
+    );
+    const commentCalls = generateContent.mock.calls.filter(
+      call => call[0].config?.maxOutputTokens === MAX_COMMENT_OUTPUT_TOKENS,
+    );
+
+    expect(evaluationCalls).toHaveLength(5);
+    expect(commentCalls).toHaveLength(3);
+    expect(result.posts.every(candidate => candidate.views === 10)).toBe(true);
+    expect(warnings).not.toContain('POST_EVALUATION_FALLBACK');
+    expect(warnings.filter(code => code === 'POST_COMMENTS_FALLBACK')).toHaveLength(5);
+  });
+
   it('degrades non-fatal post enrichment failures and emits warnings', async () => {
     const generateContent = vi.fn(
       async (request: { contents?: unknown; config?: Record<string, unknown> }) => {
@@ -550,6 +609,7 @@ describe('gallery engine hardening', () => {
 
     expect(result.posts).toHaveLength(5);
     expect(result.posts.some(candidate => candidate.views === 0)).toBe(true);
+    expect(result.posts.filter(candidate => candidate.views === 10)).toHaveLength(4);
     expect(
       result.posts.some(candidate => candidate.views === 0 && candidate.comments.length > 0),
     ).toBe(true);

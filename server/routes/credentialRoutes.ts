@@ -27,6 +27,7 @@ interface CredentialRouterOptions {
   sessionId?: (request: Request) => string;
   limiter?: Pick<AiAdmissionLimiter, 'run'>;
   connectionTestTimeoutMs?: number;
+  allowVertexAdc?: boolean;
 }
 
 const isProvider = (value: string): value is AiProvider => value === 'gemini' || value === 'vertex';
@@ -43,11 +44,17 @@ export const createCredentialRouter = ({
   sessionId = getSessionId,
   limiter = aiAdmissionLimiter,
   connectionTestTimeoutMs = CONNECTION_TEST_TIMEOUT_MS,
+  allowVertexAdc = process.env.DCGM_ENABLE_VERTEX_ADC === '1',
 }: CredentialRouterOptions = {}): Router => {
   const router = Router();
 
+  const getCredentialStatus = (id: string) => ({
+    ...store.status(id),
+    capabilities: { vertexAdc: allowVertexAdc },
+  });
+
   router.get('/', (request, response) => {
-    response.json(store.status(sessionId(request)));
+    response.json(getCredentialStatus(sessionId(request)));
   });
 
   router.post('/gemini', (request, response) => {
@@ -56,7 +63,7 @@ export const createCredentialRouter = ({
       if (!parsed.success) throw zodValidationError(parsed.error);
       const id = sessionId(request);
       store.setGemini(id, parsed.data.apiKey);
-      response.status(201).json(store.status(id));
+      response.status(201).json(getCredentialStatus(id));
     } catch (error) {
       sendPublicError(response, error);
     }
@@ -74,7 +81,7 @@ export const createCredentialRouter = ({
         location: 'global',
         credentials,
       });
-      response.status(201).json(store.status(id));
+      response.status(201).json(getCredentialStatus(id));
     } catch (error) {
       sendPublicError(
         response,
@@ -87,6 +94,18 @@ export const createCredentialRouter = ({
   });
 
   router.post('/vertex/adc', (request, response) => {
+    if (!allowVertexAdc) {
+      sendPublicError(
+        response,
+        Object.assign(
+          new Error(
+            '서버의 Application Default Credentials 사용이 비활성화되어 있습니다. DCGM_ENABLE_VERTEX_ADC=1로 명시적으로 활성화해주세요.',
+          ),
+          { status: 403, code: 'ADC_DISABLED', retryable: false },
+        ),
+      );
+      return;
+    }
     try {
       const parsed = adcSchema.safeParse(request.body);
       if (!parsed.success) throw zodValidationError(parsed.error);
@@ -99,7 +118,7 @@ export const createCredentialRouter = ({
         projectId,
         location: 'global',
       });
-      response.status(201).json(store.status(id));
+      response.status(201).json(getCredentialStatus(id));
     } catch (error) {
       sendPublicError(
         response,

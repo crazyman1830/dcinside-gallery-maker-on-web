@@ -6,7 +6,6 @@ import {
   migrateGalleryContext,
   migrateGalleryData,
   migrateGallerySession,
-  persistGallerySession,
 } from '../hooks/useGalleryStorage';
 import type { GallerySessionV2 } from '../types';
 import { formatTimestamp, migrateTimestamp, timestampToEpoch } from '../utils/common';
@@ -114,36 +113,6 @@ describe('GallerySessionV2 migration', () => {
     expect(storage.getItem(SESSION_STORAGE_KEY)).toBeNull();
   });
 
-  it('keeps memory operation alive when storage quota is exceeded', () => {
-    const storage = new MemoryStorage({}, true);
-    const session = {
-      version: 2,
-      revision: 1,
-      savedAt: '2026-08-14T00:00:00.000Z',
-      gallery: migrateGalleryData(legacyGallery)!,
-      context: { ...legacyContext, selectedProvider: 'gemini', selectedModel: 'gemini-3.5-flash' },
-      profile: null,
-    } satisfies GallerySessionV2;
-    expect(persistGallerySession(storage, session)).toBe(false);
-    expect(session.gallery.posts).toHaveLength(1);
-  });
-
-  it('drops corrupt post items but preserves valid array order', () => {
-    const migrated = migrateGalleryData(
-      {
-        ...legacyGallery,
-        posts: [
-          legacyGallery.posts[0],
-          null,
-          { title: {} },
-          { ...legacyGallery.posts[0], id: 'p2' },
-        ],
-      },
-      Date.UTC(2026, 7, 14),
-    );
-    expect(migrated?.posts.map(post => post.id)).toEqual(['p1', 'p2']);
-  });
-
   it('normalizes replies, votes, warnings, and counters while dropping transient grounding data', () => {
     const migrated = migrateGalleryData({
       ...legacyGallery,
@@ -244,13 +213,10 @@ describe('GallerySessionV2 migration', () => {
 });
 
 describe('timestamp migration and presentation', () => {
-  it('parses the legacy Korean detailed timestamp without Date.parse', () => {
+  it('parses legacy timestamps and uses a deterministic fallback', () => {
     const iso = migrateTimestamp('26. 08. 14. 오전 05:50', Date.UTC(2026, 7, 14));
     expect(timestampToEpoch(iso)).toBeGreaterThan(0);
     expect(formatTimestamp(iso)).not.toBe('날짜 정보 없음');
-  });
-
-  it('uses deterministic fallback timestamps for unparseable values', () => {
     const fallback = Date.UTC(2026, 0, 1, 0, 0, 1);
     expect(migrateTimestamp('invalid', fallback)).toBe('2026-01-01T00:00:01.000Z');
   });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { generateKeyPairSync } from 'node:crypto';
-import { parseServiceAccountCredential, validateGoogleProjectId } from '../server/credentials';
+import { parseServiceAccountCredential } from '../server/credentials';
 
 const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 1_024 });
 const privateKeyPem = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
@@ -14,18 +14,6 @@ const validCredential = {
 };
 
 describe('service account credential parser', () => {
-  it('rejects Google-reserved project ID substrings', () => {
-    expect(validateGoogleProjectId('sample-project-123')).toBe('sample-project-123');
-    for (const projectId of [
-      'my-google-project',
-      'ssl-project',
-      'null-project',
-      'undefined-project',
-    ]) {
-      expect(() => validateGoogleProjectId(projectId)).toThrow();
-    }
-  });
-
   it('accepts an object and forwards only explicitly allowed fields', () => {
     const parsed = parseServiceAccountCredential({
       ...validCredential,
@@ -44,27 +32,31 @@ describe('service account credential parser', () => {
     expect(parseServiceAccountCredential(JSON.stringify(validCredential))).toEqual(validCredential);
   });
 
-  it.each([
-    null,
-    [],
-    { ...validCredential, type: 'authorized_user' },
-    { ...validCredential, project_id: '' },
-    { ...validCredential, project_id: 'abcde' },
-    { ...validCredential, project_id: 'Uppercase-project' },
-    { ...validCredential, project_id: 'project-' },
-    { ...validCredential, project_id: `p${'a'.repeat(30)}` },
-    { ...validCredential, project_id: 'my-google-project' },
-    { ...validCredential, project_id: 'ssl-project' },
-    { ...validCredential, project_id: 'null-project' },
-    { ...validCredential, project_id: 'undefined-project' },
-    { ...validCredential, client_email: 'not-an-email' },
-    { ...validCredential, private_key: 'not-a-private-key' },
-    { ...validCredential, token_uri: 'http://oauth2.googleapis.com/token' },
-    { ...validCredential, token_uri: 'https://example.invalid/token' },
-    { ...validCredential, token_uri: 'https://oauth2.googleapis.com:444/token' },
-    { ...validCredential, token_uri: 'https://oauth2.googleapis.com/token?redirect=1' },
-    '{not json}',
-  ])('rejects malformed or unsafe credentials', value => {
-    expect(() => parseServiceAccountCredential(value)).toThrow();
+  it('rejects malformed or unsafe credentials', () => {
+    const invalidCredentials: unknown[] = [
+      null,
+      [],
+      { ...validCredential, type: 'authorized_user' },
+      { ...validCredential, project_id: '' },
+      { ...validCredential, project_id: 'abcde' },
+      { ...validCredential, project_id: 'Uppercase-project' },
+      { ...validCredential, project_id: 'project-' },
+      { ...validCredential, project_id: `p${'a'.repeat(30)}` },
+      { ...validCredential, project_id: 'my-google-project' },
+      { ...validCredential, project_id: 'ssl-project' },
+      { ...validCredential, project_id: 'null-project' },
+      { ...validCredential, project_id: 'undefined-project' },
+      { ...validCredential, client_email: 'not-an-email' },
+      { ...validCredential, private_key: 'not-a-private-key' },
+      { ...validCredential, token_uri: 'http://oauth2.googleapis.com/token' },
+      { ...validCredential, token_uri: 'https://example.invalid/token' },
+      { ...validCredential, token_uri: 'https://oauth2.googleapis.com:444/token' },
+      { ...validCredential, token_uri: 'https://oauth2.googleapis.com/token?redirect=1' },
+      '{not json}',
+    ];
+
+    for (const value of invalidCredentials) {
+      expect(() => parseServiceAccountCredential(value)).toThrow();
+    }
   });
 });

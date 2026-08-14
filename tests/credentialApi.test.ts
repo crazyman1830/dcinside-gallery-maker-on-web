@@ -60,15 +60,6 @@ describe('credential API security boundary', () => {
     expect(response.headers['content-security-policy']).toContain("object-src 'none'");
   });
 
-  it('never serves credential directories through the frontend fallback', async () => {
-    const app = await createApp({
-      mode: 'test',
-      serveFrontend: false,
-      store: new SessionCredentialStore(),
-    });
-    await request(app).get('/vertex/example.json').set('Host', '127.0.0.1:8787').expect(404);
-  });
-
   it('rejects non-loopback Host and Origin headers', async () => {
     const app = await createApp({
       mode: 'test',
@@ -81,6 +72,11 @@ describe('credential API security boundary', () => {
       .get('/api/ai/credentials')
       .set('Host', '127.0.0.1:8787')
       .set('Origin', 'https://example.com')
+      .expect(403);
+    await request(app)
+      .get('/api/ai/credentials')
+      .set('Host', '127.0.0.1:8787')
+      .set('Sec-Fetch-Site', 'cross-site')
       .expect(403);
     await request(app)
       .get('/api/ai/credentials')

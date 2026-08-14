@@ -53,14 +53,17 @@ afterEach(() => {
 });
 
 describe('preset V2 storage', () => {
-  it.each(['{}', '[{}]', 'null'])('ignores malformed legacy value %s', async stored => {
-    const storage = new MemoryStorage();
-    storage.setItem('user_presets', stored);
-    vi.stubGlobal('localStorage', storage);
-    const { getPresets } = await import('../services/presetService');
+  it('ignores malformed legacy values', async () => {
+    for (const stored of ['{}', '[{}]', 'null']) {
+      vi.resetModules();
+      const storage = new MemoryStorage();
+      storage.setItem('user_presets', stored);
+      vi.stubGlobal('localStorage', storage);
+      const { getPresets } = await import('../services/presetService');
 
-    expect(() => getPresets()).not.toThrow();
-    expect(getPresets().every(preset => preset.id.startsWith('preset-example-'))).toBe(true);
+      expect(() => getPresets()).not.toThrow();
+      expect(getPresets().every(preset => preset.id.startsWith('preset-example-'))).toBe(true);
+    }
   });
 
   it('migrates valid user presets to the versioned key', async () => {
@@ -104,9 +107,10 @@ describe('preset V2 storage', () => {
 
     const loaded = service.getPresets();
     const userPreset = loaded.find(preset => preset.id === 'preset-user-v2');
-    expect(userPreset?.settings).not.toHaveProperty('selectedProvider');
-    expect(userPreset?.settings).not.toHaveProperty('selectedModel');
-    expect(userPreset?.settings).not.toHaveProperty('isSearchEnabled');
+    for (const field of service.ADVANCED_PRESET_FIELDS) {
+      expect(userPreset?.settings).not.toHaveProperty(field);
+    }
+    expect(JSON.stringify(userPreset)).not.toMatch(/apiKey|private_key|credentials/i);
 
     const builtinId = loaded.find(preset => preset.id.startsWith('preset-example-'))!.id;
     expect(service.deleteUserPreset(builtinId).some(preset => preset.id === builtinId)).toBe(true);

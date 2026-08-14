@@ -10,6 +10,7 @@ import type {
   NewPostData,
   Post,
 } from '../types';
+import { ApiError, readApiError } from './apiError';
 export type {
   CreateGalleryParams,
   GalleryContextParams,
@@ -162,17 +163,6 @@ const parseGalleryStreamEvent = (value: unknown): GalleryStreamEvent => {
   throw new Error('로컬 AI 서버가 올바르지 않은 스트림 이벤트를 반환했습니다.');
 };
 
-const readError = async (response: Response): Promise<Error> => {
-  let message = `요청에 실패했습니다. (HTTP ${response.status})`;
-  try {
-    const payload = (await response.json()) as { error?: string; message?: string };
-    message = payload.error || payload.message || message;
-  } catch {
-    // The status-only message is safe and sufficient for non-JSON failures.
-  }
-  return new Error(message);
-};
-
 const postJson = async <T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> => {
   const response = await fetch(path, {
     method: 'POST',
@@ -181,7 +171,7 @@ const postJson = async <T>(path: string, body: unknown, signal?: AbortSignal): P
     body: JSON.stringify(body),
     signal,
   });
-  if (!response.ok) throw await readError(response);
+  if (!response.ok) throw await readApiError(response, '요청에 실패했습니다.');
   return response.json() as Promise<T>;
 };
 
@@ -267,7 +257,7 @@ export const createGalleryStreamed = async (
     signal,
   });
 
-  if (!response.ok) throw await readError(response);
+  if (!response.ok) throw await readApiError(response, '요청에 실패했습니다.');
   if (!response.body) throw new Error('로컬 AI 서버의 스트림을 열 수 없습니다.');
 
   let result: GalleryData | undefined;
@@ -280,7 +270,13 @@ export const createGalleryStreamed = async (
       if (event.type === 'phase') onPhase?.(event.phase, event.message, event.progress);
       if (event.type === 'warning') warnings.push(event.warning);
       if (event.type === 'result') result = event.data;
-      if (event.type === 'error') streamError = new Error(event.message);
+      if (event.type === 'error') {
+        streamError = new ApiError(event.message, {
+          code: event.code,
+          retryable: event.retryable,
+          requestId: event.requestId,
+        });
+      }
     },
     signal,
   );

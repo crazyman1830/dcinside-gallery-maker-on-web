@@ -1,14 +1,17 @@
 import { Post, GalleryData } from '../../types';
 import { PromptContext } from './context';
+import { buildSimulationContextPrompt } from './simulationContext';
 
-export const EVALUATION_PROMPT_VERSION = '2.0.1';
+export const EVALUATION_PROMPT_VERSION = '2.1.0';
 
 export const buildPostEvaluationPrompt = (
   userPost: Pick<Post, 'title' | 'author' | 'content'>,
-  _galleryContext: PromptContext,
+  galleryContext: PromptContext,
 ) => {
   const prompt = `
 // PROMPT VERSION: ${EVALUATION_PROMPT_VERSION}
+${buildSimulationContextPrompt(galleryContext)}
+
 **1. INPUT DATA**
 Title: ${userPost.title}
 Content: ${userPost.content}

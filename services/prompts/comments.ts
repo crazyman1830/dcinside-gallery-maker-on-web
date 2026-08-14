@@ -2,8 +2,9 @@ import { Post, Comment } from '../../types';
 import { PromptContext } from './context';
 import { generatePlayerStatusInstructions } from './instructions';
 import { resolveUserNickname } from '../../utils/common';
+import { buildSimulationContextPrompt } from './simulationContext';
 
-export const COMMENT_PROMPT_VERSION = '2.0.3';
+export const COMMENT_PROMPT_VERSION = '2.1.0';
 
 export const buildCommentGenerationPrompt = (
   userPost: Pick<Post, 'title' | 'author' | 'content'>,
@@ -37,6 +38,8 @@ ${statusInstructions}
 
   const prompt = `
 // PROMPT VERSION: ${COMMENT_PROMPT_VERSION}
+${buildSimulationContextPrompt(galleryContext)}
+
 **1. CONTEXT: TARGET POST**
 - Title: "${userPost.title}"
 - Author: "${userPost.author}"
@@ -103,6 +106,8 @@ ${statusInstructions}
 
   const prompt = `
 // PROMPT VERSION: ${COMMENT_PROMPT_VERSION}
+${buildSimulationContextPrompt(galleryContext)}
+
 **1. CONTEXT**
 - Post: "${originalPost.title}"
 - Recent Comments:

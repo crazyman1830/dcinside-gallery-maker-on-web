@@ -54,13 +54,13 @@ npm start
 
 Google AI Studio에서 발급받은 API 키를 앱의 연결 설정에 입력합니다. 키는 Node.js 서버가 보관하고 사용하며 브라우저 번들에는 포함되지 않습니다.
 
-등록한 API 키와 Vertex 자격 증명은 현재 서버 프로세스의 메모리에만 남습니다. 8시간 동안 사용하지 않거나 연결을 해제하거나 서버를 재시작하면 삭제됩니다.
+등록한 API 키와 Vertex 자격 증명은 현재 서버 프로세스의 메모리에만 남습니다. 8시간 동안 사용하지 않거나 연결을 해제하거나 서버를 재시작하면 삭제됩니다. 세션 상한에 도달하면 서버 가용성을 유지하기 위해 가장 오래 사용하지 않은 세션이 먼저 제거될 수 있습니다.
 
 `VITE_` 접두사가 붙은 변수는 브라우저에 공개됩니다. `VITE_GEMINI_API_KEY`와 같은 변수에 비밀값을 저장하지 마세요.
 
 ### Vertex AI: Application Default Credentials
 
-로컬 개발에서는 Application Default Credentials(ADC)를 권장합니다.
+로컬 개발에서는 Application Default Credentials(ADC)를 사용할 수 있습니다. 서버 소유자의 주변 자격 증명이 의도치 않게 로컬 API에 노출되지 않도록 ADC 경로는 기본적으로 꺼져 있으며, 사용할 때만 `DCGM_ENABLE_VERTEX_ADC=1`로 명시적으로 활성화합니다.
 
 ```bash
 gcloud auth application-default login
@@ -72,6 +72,7 @@ PowerShell:
 
 ```powershell
 $env:GOOGLE_CLOUD_PROJECT = "your-project-id"
+$env:DCGM_ENABLE_VERTEX_ADC = "1"
 npm run dev
 ```
 
@@ -79,6 +80,7 @@ macOS/Linux:
 
 ```bash
 export GOOGLE_CLOUD_PROJECT="your-project-id"
+export DCGM_ENABLE_VERTEX_ADC="1"
 npm run dev
 ```
 
@@ -172,7 +174,7 @@ npm run eval:live
 
 평가는 응답 스키마, 정확히 5개 게시물, 댓글 상한, 빈 콘텐츠, 예약된 작성자 사용 여부, 시나리오별 지연 시간/p50/p95와 SDK가 보고한 토큰 사용량을 요약합니다. 별도 평가 모델이 몰입감·관련성·다양성을 각각 5점 척도로 채점하며 평균 4.0 미만은 실패로 처리합니다. `LIVE_EVAL_MODEL`과 `LIVE_EVAL_TIMEOUT_MS`로 모델과 요청 제한 시간을 바꿀 수 있습니다.
 
-이 저장소는 GitHub Actions, 예약 워크플로, Dependabot 자동 PR을 사용하지 않습니다. 품질 검증과 의존성 점검은 개발자가 로컬에서 명시적으로 실행할 때만 동작합니다. 커버리지 HTML, Playwright 보고서, 빌드 결과물은 각각 `coverage/`, `playwright-report/`, `dist/` 및 `dist-server/`에 생성되며 Git에 커밋하지 않습니다.
+GitHub Actions는 pull request와 `main` 브랜치 push마다 지원 Node.js 버전의 핵심 검증과 Chromium E2E를 실행합니다. Dependabot은 npm 패키지와 GitHub Actions 업데이트를 매주 확인합니다. 로컬에서는 동일한 전체 검증을 `npm run verify`로 실행할 수 있습니다. 커버리지 HTML, Playwright 보고서, 빌드 결과물은 각각 `coverage/`, `playwright-report/`, `dist/` 및 `dist-server/`에 생성되며 Git에 커밋하지 않습니다.
 
 ## 주의사항
 

@@ -164,7 +164,11 @@ export const PostView: React.FC<PostViewProps> = ({
                 </span>
               </div>
             )}
-            <h3 className="text-2xl md:text-3xl font-bold text-slate-800 leading-tight break-words tracking-tight">
+            <h3
+              id="post-title"
+              tabIndex={-1}
+              className="text-2xl md:text-3xl font-bold text-slate-800 leading-tight break-words tracking-tight outline-none"
+            >
               {post.title}
             </h3>
           </div>
@@ -193,7 +197,7 @@ export const PostView: React.FC<PostViewProps> = ({
               </span>
               <span
                 title="추천수"
-                className="flex items-center gap-1.5 bg-white px-2 py-1 rounded border border-slate-200 text-xs text-red-500 font-medium"
+                className="flex items-center gap-1.5 bg-white px-2 py-1 rounded border border-slate-200 text-xs text-red-600 font-medium"
               >
                 <i className="far fa-thumbs-up"></i> {recs}
               </span>
@@ -216,14 +220,16 @@ export const PostView: React.FC<PostViewProps> = ({
         <div className="mb-12 flex flex-col items-center gap-4 select-none">
           <div className="flex items-center gap-4 sm:gap-6">
             <button
+              type="button"
               onClick={handleRecommend}
-              className={`group relative flex flex-col items-center justify-center w-20 h-20 sm:w-24 sm:h-24 rounded-2xl border-2 transition-all duration-200
+              className={`group relative flex flex-col items-center justify-center w-20 h-20 sm:w-24 sm:h-24 rounded-2xl border-2 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2
                     ${
                       voted === 'rec'
                         ? 'bg-red-50 border-red-500 text-red-600 shadow-inner scale-95'
                         : 'bg-white border-slate-200 text-slate-600 hover:border-red-300 hover:bg-red-50/30 hover:text-red-600 shadow-sm hover:shadow-md hover:-translate-y-1'
                     }`}
               aria-label={`추천 ${recs.toLocaleString()}개`}
+              aria-pressed={voted === 'rec'}
             >
               <i className="fas fa-thumbs-up text-2xl sm:text-3xl mb-1 sm:mb-2 transform group-hover:scale-110 transition-transform duration-300"></i>
               <span className="text-lg sm:text-xl font-bold font-mono tracking-tight">{recs}</span>
@@ -235,14 +241,16 @@ export const PostView: React.FC<PostViewProps> = ({
             </button>
 
             <button
+              type="button"
               onClick={handleNonRecommend}
-              className={`group relative flex flex-col items-center justify-center w-20 h-20 sm:w-24 sm:h-24 rounded-2xl border-2 transition-all duration-200
+              className={`group relative flex flex-col items-center justify-center w-20 h-20 sm:w-24 sm:h-24 rounded-2xl border-2 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2
                     ${
                       voted === 'nonrec'
                         ? 'bg-blue-50 border-blue-500 text-blue-600 shadow-inner scale-95'
                         : 'bg-white border-slate-200 text-slate-600 hover:border-blue-300 hover:bg-blue-50/30 hover:text-blue-600 shadow-sm hover:shadow-md hover:-translate-y-1'
                     }`}
               aria-label={`비추천 ${nonRecs.toLocaleString()}개`}
+              aria-pressed={voted === 'nonrec'}
             >
               <i className="fas fa-thumbs-down text-2xl sm:text-3xl mb-1 sm:mb-2 transform group-hover:scale-110 transition-transform duration-300"></i>
               <span className="text-lg sm:text-xl font-bold font-mono tracking-tight">
@@ -261,16 +269,18 @@ export const PostView: React.FC<PostViewProps> = ({
         <div className="flex justify-between border-t border-slate-100 pt-8">
           {onBackToList && (
             <button
+              type="button"
               onClick={onBackToList}
-              className="px-4 sm:px-5 py-2.5 rounded-lg font-medium bg-white border border-slate-300 hover:bg-slate-50 hover:border-slate-400 text-slate-700 transition-all duration-200 flex items-center gap-2 shadow-sm"
+              className="px-4 sm:px-5 py-2.5 rounded-lg font-medium bg-white border border-slate-300 hover:bg-slate-50 hover:border-slate-400 text-slate-700 transition-all duration-200 flex items-center gap-2 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
             >
               <i className="fas fa-list text-slate-400"></i> 목록으로
             </button>
           )}
           {onWritePost && (
             <button
+              type="button"
               onClick={onWritePost}
-              className="px-4 sm:px-5 py-2.5 rounded-lg font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2 transform hover:-translate-y-0.5"
+              className="px-4 sm:px-5 py-2.5 rounded-lg font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2 transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
             >
               <i className="fas fa-pen"></i> 글쓰기
             </button>

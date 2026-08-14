@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createApp } from '../server/app';
-import { SessionCapacityError, SessionCredentialStore } from '../server/sessionStore';
+import { SessionCredentialStore } from '../server/sessionStore';
 import { AiAdmissionLimiter, AiCapacityError, AiSessionBusyError } from '../server/ai/admission';
 
 const LOCAL_HOST = '127.0.0.1:8787';
@@ -71,7 +71,7 @@ describe('backend request lifecycle hardening', () => {
       .send({ targetPost: {}, updatedComments: [{ text: 123 }], galleryContext: {} })
       .expect(400);
     expect(nested.body.code).toBe('INVALID_REQUEST');
-    expect(nested.body.field).toBeTruthy();
+    expect(nested.body.field).toBe('targetPost.id');
   });
 
   it('rejects endpoint payloads above their specific body limit', async () => {
@@ -129,6 +129,11 @@ describe('backend request lifecycle hardening', () => {
         .set('Host', LOCAL_HOST)
         .set('Accept', 'application/json')
         .expect(404);
+      await request(app)
+        .get('/vertex/example.json')
+        .set('Host', LOCAL_HOST)
+        .set('Accept', 'text/html')
+        .expect(404);
       expect(log).toHaveBeenCalled();
       const diagnostic = JSON.parse(String(log.mock.calls[0]?.[0])) as Record<string, unknown>;
       expect(diagnostic).toMatchObject({ level: 'info', event: 'http_request' });
@@ -140,7 +145,7 @@ describe('backend request lifecycle hardening', () => {
     }
   });
 
-  it('maps unexpected middleware failures and session capacity to structured errors', async () => {
+  it('maps unexpected middleware failures and recovers from session capacity', async () => {
     const failingStore = new SessionCredentialStore();
     vi.spyOn(failingStore, 'getOrCreate').mockImplementation(() => {
       throw new Error('raw internal details');
@@ -165,12 +170,16 @@ describe('backend request lifecycle hardening', () => {
     const protectedSession = fullStore.create();
     fullStore.setGemini(protectedSession.id, 'secret');
     const fullApp = await createApp({ mode: 'test', serveFrontend: false, store: fullStore });
-    const capacity = await request(fullApp)
+    const replacement = await request(fullApp)
       .get('/api/ai/credentials')
       .set('Host', LOCAL_HOST)
-      .expect(503);
-    expect(capacity.body).toMatchObject({ code: 'SESSION_CAPACITY', retryable: true });
-    expect(capacity.headers['retry-after']).toBe('1');
+      .expect(200);
+    expect(replacement.body.providers).toMatchObject({
+      gemini: { configured: false },
+      vertex: { configured: false },
+    });
+    expect(fullStore.get(protectedSession.id)).toBeUndefined();
+    expect(fullStore.size).toBe(1);
   });
 });
 
@@ -219,13 +228,5 @@ describe('bounded session store', () => {
     expect(store.get(second.id)).toBeDefined();
     expect(store.get(third.id)).toBeDefined();
     expect(store.size).toBe(2);
-  });
-
-  it('does not evict sessions that contain credentials', () => {
-    const store = new SessionCredentialStore(Date.now, 10_000, 1);
-    const session = store.create();
-    store.setGemini(session.id, 'secret');
-    expect(() => store.create()).toThrow(SessionCapacityError);
-    expect(store.get(session.id)?.gemini?.apiKey).toBe('secret');
   });
 });

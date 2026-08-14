@@ -18,12 +18,6 @@ export const PostListItem: React.FC<PostListItemProps> = React.memo(
         className={`border-b border-slate-100/80 transition-all duration-200 cursor-pointer group
         ${isBest ? 'bg-amber-50/60 hover:bg-amber-100/80' : 'hover:bg-slate-50'}`}
         onClick={() => onSelectPost(post.id)}
-        onKeyDown={e => {
-          if (e.key === 'Enter' || e.key === ' ') onSelectPost(post.id);
-        }}
-        tabIndex={0}
-        role="link"
-        aria-label={`게시물 ${post.title} 보기`}
       >
         {/* Number / Icon */}
         <td className="hidden w-12 px-4 py-4 text-center font-mono text-sm text-slate-600 sm:table-cell sm:w-16">
@@ -45,12 +39,18 @@ export const PostListItem: React.FC<PostListItemProps> = React.memo(
                   <i className="fas fa-crown text-[10px]"></i>
                 </span>
               )}
-              <span
-                className={`text-base font-medium break-words leading-snug transition-colors
+              <button
+                type="button"
+                onClick={event => {
+                  event.stopPropagation();
+                  onSelectPost(post.id);
+                }}
+                className={`rounded text-left text-base font-medium break-words leading-snug transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2
                     ${isBest ? 'text-slate-900 font-semibold' : 'text-slate-700 group-hover:text-blue-600'}`}
+                aria-label={`게시물 ${post.title} 보기`}
               >
                 {post.title}
-              </span>
+              </button>
               {post.comments.length > 0 && (
                 <span className="mt-0.5 text-xs font-bold text-blue-600 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded-md h-fit shrink-0">
                   {post.comments.length}
@@ -75,7 +75,7 @@ export const PostListItem: React.FC<PostListItemProps> = React.memo(
               </time>
               <span className="w-[1px] h-2 bg-slate-300"></span>
               <span
-                className={`flex items-center gap-1 px-1.5 py-0.5 rounded ${isBest ? 'text-red-500 bg-red-50' : 'text-slate-500'}`}
+                className={`flex items-center gap-1 px-1.5 py-0.5 rounded ${isBest ? 'text-red-600 bg-red-50' : 'text-slate-500'}`}
               >
                 <i className="fas fa-thumbs-up text-[10px]"></i> {post.recommendations}
               </span>

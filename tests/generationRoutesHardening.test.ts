@@ -270,28 +270,28 @@ describe('generation route lifecycle', () => {
     ]);
   });
 
-  it('rejects an NDJSON line above 512 KiB with a bounded terminal error', async () => {
+  it('enforces per-line, total, and UTF-8 NDJSON byte budgets', async () => {
     engine.createGallery.mockImplementationOnce(async (_client, _params, callbacks) => {
       await callbacks.onChunk('x'.repeat(NDJSON_MAX_LINE_BYTES));
       return { galleryTitle: 'unreachable', posts: [] };
     });
-    const { app } = makeFixture();
+    const lineFixture = makeFixture();
 
-    const response = await request(app)
+    const lineResponse = await request(lineFixture.app)
       .post('/api/ai/gallery/stream')
       .send(galleryContext)
       .expect(200);
-    const lines = response.text.trim().split('\n');
-    expect(lines).toHaveLength(1);
-    expect(Buffer.byteLength(lines[0], 'utf8')).toBeLessThanOrEqual(NDJSON_MAX_LINE_BYTES);
-    expect(JSON.parse(lines[0]) as Record<string, unknown>).toMatchObject({
+    const oversizedLineEvents = lineResponse.text.trim().split('\n');
+    expect(oversizedLineEvents).toHaveLength(1);
+    expect(Buffer.byteLength(oversizedLineEvents[0], 'utf8')).toBeLessThanOrEqual(
+      NDJSON_MAX_LINE_BYTES,
+    );
+    expect(JSON.parse(oversizedLineEvents[0]) as Record<string, unknown>).toMatchObject({
       type: 'error',
       code: 'AI_RESPONSE_TOO_LARGE',
       retryable: false,
     });
-  });
 
-  it('caps the entire NDJSON response at 1 MiB including its terminal error', async () => {
     engine.createGallery.mockImplementationOnce(async (_client, _params, callbacks) => {
       const chunk = 'x'.repeat(400 * 1_024);
       await callbacks.onChunk(chunk);
@@ -299,36 +299,36 @@ describe('generation route lifecycle', () => {
       await callbacks.onChunk(chunk);
       return { galleryTitle: 'unreachable', posts: [] };
     });
-    const { app } = makeFixture();
+    const totalFixture = makeFixture();
 
-    const response = await request(app)
+    const totalResponse = await request(totalFixture.app)
       .post('/api/ai/gallery/stream')
       .send(galleryContext)
       .expect(200);
-    const lines = response.text.trim().split('\n');
-    expect(Buffer.byteLength(response.text, 'utf8')).toBeLessThanOrEqual(NDJSON_MAX_TOTAL_BYTES);
-    expect(lines.every(line => Buffer.byteLength(line, 'utf8') <= NDJSON_MAX_LINE_BYTES)).toBe(
-      true,
+    const totalEvents = totalResponse.text.trim().split('\n');
+    expect(Buffer.byteLength(totalResponse.text, 'utf8')).toBeLessThanOrEqual(
+      NDJSON_MAX_TOTAL_BYTES,
     );
-    expect(JSON.parse(lines.at(-1) ?? '{}') as Record<string, unknown>).toMatchObject({
+    expect(
+      totalEvents.every(line => Buffer.byteLength(line, 'utf8') <= NDJSON_MAX_LINE_BYTES),
+    ).toBe(true);
+    expect(JSON.parse(totalEvents.at(-1) ?? '{}') as Record<string, unknown>).toMatchObject({
       type: 'error',
       code: 'AI_RESPONSE_TOO_LARGE',
       retryable: false,
     });
-  });
 
-  it('measures NDJSON limits in UTF-8 bytes rather than JavaScript characters', async () => {
     engine.createGallery.mockImplementationOnce(async (_client, _params, callbacks) => {
       await callbacks.onChunk('한'.repeat(180 * 1_024));
       return { galleryTitle: 'unreachable', posts: [] };
     });
-    const { app } = makeFixture();
+    const utf8Fixture = makeFixture();
 
-    const response = await request(app)
+    const utf8Response = await request(utf8Fixture.app)
       .post('/api/ai/gallery/stream')
       .send(galleryContext)
       .expect(200);
-    expect(parseEvents(response.text)).toEqual([
+    expect(parseEvents(utf8Response.text)).toEqual([
       expect.objectContaining({ type: 'error', code: 'AI_RESPONSE_TOO_LARGE' }),
     ]);
   });

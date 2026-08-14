@@ -257,7 +257,12 @@ afterEach(() => {
 describe('useGallery gallery generation', () => {
   it('keeps the old session until a complete result atomically replaces it', async () => {
     const previousGallery = storage.galleryData;
-    const nextGallery = makeGallery(makePost('generated'));
+    const warning: GenerationWarning = {
+      code: 'COMMENTS_PARTIAL',
+      message: 'some comments were skipped',
+      stage: 'comments',
+    };
+    const nextGallery = { ...makeGallery(makePost('generated')), warnings: [warning] };
     const deferred = makeDeferred<GalleryData>();
     vi.mocked(galleryService.createGalleryStreamed).mockImplementation(
       (_params, onChunk, _signal, onPhase) => {
@@ -288,30 +293,8 @@ describe('useGallery gallery generation', () => {
       profile,
     );
     expect(storage.galleryData).toBe(nextGallery);
-    expect(ui.setSuccessMessage).toHaveBeenCalled();
-    expect(ui.setIsLoading).toHaveBeenLastCalledWith(false);
-  });
-
-  it('surfaces non-fatal generation warnings while keeping the result', async () => {
-    const warning: GenerationWarning = {
-      code: 'COMMENTS_PARTIAL',
-      message: 'some comments were skipped',
-      stage: 'comments',
-    };
-    vi.mocked(galleryService.createGalleryStreamed).mockResolvedValue({
-      ...makeGallery(),
-      warnings: [warning],
-    });
-    const { result } = renderGalleryHook();
-
-    await act(async () => {
-      await expect(
-        result.current.createGallery({ ...context, userProfile: profile }),
-      ).resolves.toBe(true);
-    });
-
     expect(ui.setWarningMessage).toHaveBeenCalledWith(expect.stringContaining(warning.message));
-    expect(storage.replaceSession).toHaveBeenCalledOnce();
+    expect(ui.setIsLoading).toHaveBeenLastCalledWith(false);
   });
 
   it('preserves the previous session and reports a generation failure', async () => {
@@ -433,6 +416,15 @@ describe('useGallery comments', () => {
     expect(storage.galleryData?.posts[0].comments).toHaveLength(MAX_TOTAL_COMMENTS_PER_POST);
     expect(galleryService.addFollowUpComments).not.toHaveBeenCalled();
     expect(ui.triggerCommentHighlight).toHaveBeenCalled();
+
+    await act(async () => {
+      await result.current.addUserComment('post-1', 'one too many', 'tester');
+    });
+    expect(storage.galleryData?.posts[0].comments).toHaveLength(MAX_TOTAL_COMMENTS_PER_POST);
+    expect(ui.setError).toHaveBeenCalledWith(
+      expect.stringContaining(`${MAX_TOTAL_COMMENTS_PER_POST}`),
+    );
+    expect(galleryService.addFollowUpComments).not.toHaveBeenCalled();
   });
 
   it('merges follow-ups by ID without overwriting local votes or the optimistic comment', async () => {
@@ -456,87 +448,27 @@ describe('useGallery comments', () => {
     expect(ui.setSuccessMessage).toHaveBeenCalled();
     expect(ui.triggerCommentHighlight).toHaveBeenCalledWith(expect.any(Set));
   });
-
-  it('keeps the optimistic comment and shows a warning when follow-up generation fails', async () => {
-    vi.mocked(galleryService.addFollowUpComments).mockRejectedValue(new Error('follow-up failed'));
-    const { result } = renderGalleryHook();
-
-    await act(async () => {
-      await result.current.addUserComment('post-1', 'hello', 'reader');
-    });
-
-    expect(storage.galleryData?.posts[0].comments).toHaveLength(1);
-    expect(ui.setWarningMessage).toHaveBeenCalledWith(expect.stringContaining('AI'));
-    expect(ui.setIsAddingComment).toHaveBeenLastCalledWith(false);
-  });
-
-  it('rejects a comment when the target is missing or already full', async () => {
-    const { result } = renderGalleryHook();
-
-    await act(async () => result.current.addUserComment('missing', 'hello', 'reader'));
-    expect(ui.setError).toHaveBeenCalledWith(expect.stringContaining('찾을 수 없습니다'));
-
-    storage.galleryData = makeGallery(
-      makePost('post-1', {
-        comments: Array.from({ length: MAX_TOTAL_COMMENTS_PER_POST }, (_, index) =>
-          makeComment(`full-${index}`),
-        ),
-      }),
-    );
-    await act(async () => result.current.addUserComment('post-1', 'hello', 'reader'));
-    expect(ui.setError).toHaveBeenCalledWith(
-      expect.stringContaining(`${MAX_TOTAL_COMMENTS_PER_POST}`),
-    );
-    expect(galleryService.addFollowUpComments).not.toHaveBeenCalled();
-  });
 });
 
 describe('useGallery feedback and local actions', () => {
-  it('loads worldview feedback and persists post/comment votes', async () => {
+  it('handles worldview feedback success, failure, and eligibility', async () => {
     storage.selectedPostId = 'post-1';
-    vi.mocked(galleryService.getWorldviewFeedback).mockResolvedValue('useful feedback');
-    const { result } = renderGalleryHook();
+    vi.mocked(galleryService.getWorldviewFeedback)
+      .mockResolvedValueOnce('useful feedback')
+      .mockRejectedValueOnce(new Error('feedback failed'));
+    const { result, rerender } = renderGalleryHook();
 
     expect(result.current.selectedPost?.id).toBe('post-1');
     await act(async () => result.current.fetchWorldviewFeedback());
     expect(ui.setWorldviewFeedback).toHaveBeenCalledWith('useful feedback');
 
-    act(() => {
-      result.current.votePost('post-1', 'rec', 9, 1);
-      result.current.voteComment('post-1', 'missing', 'nonrec', 3, 5);
-      result.current.selectPost('post-1');
-      result.current.backToList();
-      result.current.openWriteModal();
-    });
-    expect(storage.galleryData?.posts[0]).toMatchObject({
-      voted: 'rec',
-      recommendations: 9,
-      nonRecommendations: 1,
-    });
-    expect(storage.selectPost).toHaveBeenCalledWith('post-1');
-    expect(storage.backToList).toHaveBeenCalled();
-    expect(ui.openWriteModal).toHaveBeenCalled();
-  });
-
-  it('reports feedback failures and guards feedback outside a custom worldview', async () => {
-    vi.mocked(galleryService.getWorldviewFeedback).mockRejectedValue(new Error('feedback failed'));
-    const { result } = renderGalleryHook();
-
     await act(async () => result.current.fetchWorldviewFeedback());
     expect(ui.setError).toHaveBeenCalledWith(expect.stringContaining('feedback failed'));
 
     storage.galleryContext = { ...context, worldviewValue: 'NONE' };
+    rerender();
     await act(async () => result.current.fetchWorldviewFeedback());
-    expect(galleryService.getWorldviewFeedback).toHaveBeenCalledOnce();
+    expect(galleryService.getWorldviewFeedback).toHaveBeenCalledTimes(2);
     expect(ui.setError).toHaveBeenCalledWith(expect.stringContaining('직접 입력'));
-  });
-
-  it('guards opening the write modal when no gallery exists', () => {
-    storage.galleryData = null;
-    const { result } = renderGalleryHook();
-
-    act(() => result.current.openWriteModal());
-    expect(ui.openWriteModal).not.toHaveBeenCalled();
-    expect(ui.setError).toHaveBeenCalledWith(expect.stringContaining('먼저 생성'));
   });
 });

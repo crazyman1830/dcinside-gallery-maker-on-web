@@ -25,7 +25,7 @@ export const FormSection: React.FC<FormSectionProps> = ({
         id={`${id}-toggle`}
         type="button"
         onClick={onToggle}
-        className={`w-full flex justify-between items-center p-5 text-left focus:outline-none transition-colors duration-200 ${isOpen ? 'bg-slate-50/50' : 'hover:bg-slate-50'}`}
+        className={`w-full flex justify-between items-center p-5 text-left transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 ${isOpen ? 'bg-slate-50/50' : 'hover:bg-slate-50'}`}
         aria-expanded={isOpen}
         aria-controls={`${id}-panel`}
       >

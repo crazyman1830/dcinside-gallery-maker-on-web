@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useGalleryForm, GalleryFormValidationErrors } from '../hooks/useGalleryForm';
 import { GalleryFormProvider } from '../context/GalleryFormContext';
 import { LoadingSpinner } from './LoadingSpinner';
@@ -73,6 +73,7 @@ const GalleryCreationFormContent: React.FC<GalleryCreationFormProps> = ({
     const preset = presets.find(p => p.id === id);
     if (preset) {
       form.applyPreset(preset.settings);
+      setFormError(null);
     }
   };
 
@@ -80,6 +81,14 @@ const GalleryCreationFormContent: React.FC<GalleryCreationFormProps> = ({
     const updatedPresets = deleteUserPreset(id);
     setPresets(updatedPresets);
   };
+
+  const handleCredentialStatusChange = useCallback(
+    (status: AiCredentialStatus) => {
+      setCredentialStatus(status);
+      setFormError(null);
+    },
+    [setFormError],
+  );
 
   const [openSections, setOpenSections] = useState<{ [key: string]: boolean }>({
     presets: false,
@@ -115,9 +124,10 @@ const GalleryCreationFormContent: React.FC<GalleryCreationFormProps> = ({
     const firstErrorKey = Object.keys(validationErrors)[0] as
       keyof GalleryFormValidationErrors | undefined;
     if (firstErrorKey) {
-      const errorMessage =
-        validationErrors[firstErrorKey] || '양식에 오류가 있습니다. 입력값을 확인해주세요.';
-      setFormError(errorMessage);
+      // Field-level alerts already describe validation failures next to the
+      // relevant control. Clear any older global error so it is not repeated
+      // above the form or left stale after the user corrects the input.
+      setFormError(null);
 
       const section =
         firstErrorKey === 'fixedNickname'
@@ -333,7 +343,7 @@ const GalleryCreationFormContent: React.FC<GalleryCreationFormProps> = ({
             onSearchEnabledChange={form.setIsSearchEnabled}
             credentialStatus={credentialStatus}
             isCheckingCredentials={isCheckingCredentials}
-            onCredentialStatusChange={setCredentialStatus}
+            onCredentialStatusChange={handleCredentialStatusChange}
           />
         </FormSection>
       </div>
@@ -341,14 +351,14 @@ const GalleryCreationFormContent: React.FC<GalleryCreationFormProps> = ({
       <button
         type="submit"
         disabled={isLoading}
-        className="w-full mt-6 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition duration-150 ease-in-out disabled:opacity-50 flex items-center justify-center text-lg"
+        className="w-full mt-6 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition duration-150 ease-in-out disabled:opacity-50 flex items-center justify-center text-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
         aria-live="polite"
       >
         {isLoading ? (
           <LoadingSpinner small={true} />
         ) : (
           <>
-            <i className="fas fa-magic mr-2"></i>갤러리 생성
+            <i className="fas fa-magic mr-2" aria-hidden="true"></i>갤러리 생성
           </>
         )}
       </button>

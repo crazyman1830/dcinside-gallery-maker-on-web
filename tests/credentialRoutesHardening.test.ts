@@ -35,12 +35,14 @@ interface FixtureOptions {
   generateContent?: ReturnType<typeof vi.fn<GenerateContent>>;
   limiter?: { run<T>(sessionId: string, operation: () => Promise<T>): Promise<T> };
   timeoutMs?: number;
+  allowVertexAdc?: boolean;
 }
 
 const makeFixture = ({
   generateContent = vi.fn<GenerateContent>(async () => ({ text: 'OK' })),
   limiter: customLimiter,
   timeoutMs = 100,
+  allowVertexAdc = true,
 }: FixtureOptions = {}) => {
   const limiterRun = vi.fn();
   const limiter = customLimiter ?? {
@@ -62,6 +64,7 @@ const makeFixture = ({
       sessionId: () => session.id,
       limiter,
       connectionTestTimeoutMs: timeoutMs,
+      allowVertexAdc,
     }),
   );
   return { app, client, generateContent, limiterRun, session, store };
@@ -96,6 +99,20 @@ describe('credential routes', () => {
     expect(store.get(session.id)?.gemini).toBeUndefined();
     await request(app).delete('/vertex').expect(204);
     expect(store.get(session.id)?.vertex).toBeUndefined();
+
+    await request(app)
+      .post('/unknown/test')
+      .send({})
+      .expect(404)
+      .expect(response => {
+        expect(response.body.code).toBe('AI_PROVIDER_NOT_FOUND');
+      });
+    await request(app)
+      .delete('/unknown')
+      .expect(404)
+      .expect(response => {
+        expect(response.body.code).toBe('AI_PROVIDER_NOT_FOUND');
+      });
   });
 
   it('uses the configured project environment and rejects strict invalid bodies', async () => {
@@ -129,6 +146,21 @@ describe('credential routes', () => {
       });
   });
 
+  it('keeps ambient Vertex ADC disabled unless the server opts in', async () => {
+    const { app, session, store } = makeFixture({ allowVertexAdc: false });
+
+    const status = await request(app).get('/').expect(200);
+    expect(status.body.capabilities).toEqual({ vertexAdc: false });
+    await request(app)
+      .post('/vertex/adc')
+      .send({ projectId: 'sample-project-123' })
+      .expect(403)
+      .expect(response => {
+        expect(response.body).toMatchObject({ code: 'ADC_DISABLED', retryable: false });
+      });
+    expect(store.get(session.id)?.vertex).toBeUndefined();
+  });
+
   it('tests both the selected and evaluation models under the limiter', async () => {
     const { app, generateContent, limiterRun, session, store } = makeFixture();
     store.setGemini(session.id, 'secret');
@@ -137,25 +169,7 @@ describe('credential routes', () => {
       .post('/gemini/test')
       .send({ model: 'selected-model' })
       .expect(200, { ok: true });
-
-    expect(provider.assertModelAllowed).toHaveBeenCalledWith('gemini', 'selected-model');
-    expect(provider.createProviderClient).toHaveBeenCalledWith(session.id, 'gemini', store);
-    expect(limiterRun).toHaveBeenCalledWith(session.id, expect.any(Function));
-    expect(generateContent).toHaveBeenCalledTimes(2);
-    expect(generateContent.mock.calls.map(call => call[0].model)).toEqual([
-      'selected-model',
-      'evaluation-gemini-model',
-    ]);
-    expect(
-      generateContent.mock.calls.every(call => call[0].config.abortSignal instanceof AbortSignal),
-    ).toBe(true);
-  });
-
-  it('uses the provider default, validates test bodies, and rejects unknown providers', async () => {
-    const { app } = makeFixture();
     await request(app).post('/gemini/test').send({}).expect(200, { ok: true });
-    expect(provider.getDefaultModel).toHaveBeenCalledWith('gemini');
-
     await request(app)
       .post('/gemini/test')
       .send({ model: '', extra: true })
@@ -163,19 +177,21 @@ describe('credential routes', () => {
       .expect(response => {
         expect(response.body.code).toBe('INVALID_REQUEST');
       });
-    await request(app)
-      .post('/unknown/test')
-      .send({})
-      .expect(404)
-      .expect(response => {
-        expect(response.body.code).toBe('AI_PROVIDER_NOT_FOUND');
-      });
-    await request(app)
-      .delete('/unknown')
-      .expect(404)
-      .expect(response => {
-        expect(response.body.code).toBe('AI_PROVIDER_NOT_FOUND');
-      });
+
+    expect(provider.assertModelAllowed).toHaveBeenCalledWith('gemini', 'selected-model');
+    expect(provider.createProviderClient).toHaveBeenCalledWith(session.id, 'gemini', store);
+    expect(provider.getDefaultModel).toHaveBeenCalledWith('gemini');
+    expect(limiterRun).toHaveBeenCalledWith(session.id, expect.any(Function));
+    expect(generateContent).toHaveBeenCalledTimes(4);
+    expect(generateContent.mock.calls.map(call => call[0].model)).toEqual([
+      'selected-model',
+      'evaluation-gemini-model',
+      'default-gemini-model',
+      'evaluation-gemini-model',
+    ]);
+    expect(
+      generateContent.mock.calls.every(call => call[0].config.abortSignal instanceof AbortSignal),
+    ).toBe(true);
   });
 
   it('surfaces limiter capacity and model validation errors without invoking the provider', async () => {

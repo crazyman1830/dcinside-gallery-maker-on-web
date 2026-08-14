@@ -103,12 +103,15 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
     e.preventDefault();
     if (!validateComment() || isAddingComment) return;
 
-    await onAddComment(postId, commentText.trim(), commentAuthor.trim(), replyTarget ?? undefined);
-
+    const submittedText = commentText.trim();
+    const submittedAuthor = commentAuthor.trim();
+    const submittedReplyTarget = replyTarget ?? undefined;
     setCommentText('');
     setReplyTarget(null);
     setTextError('');
     setAuthorError('');
+
+    await onAddComment(postId, submittedText, submittedAuthor, submittedReplyTarget);
   };
 
   const remainingComments = maxComments - currentCommentCount;
@@ -131,7 +134,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
           </span>
         </h4>
         {currentCommentCount >= maxComments && (
-          <span className="text-xs font-bold text-red-500 bg-red-50 px-2 py-1 rounded-full border border-red-100">
+          <span className="text-xs font-bold text-red-600 bg-red-50 px-2 py-1 rounded-full border border-red-100">
             최대 댓글 수 도달
           </span>
         )}
@@ -177,7 +180,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
               <button
                 type="button"
                 onClick={cancelReply}
-                className="w-5 h-5 flex items-center justify-center hover:bg-indigo-100 rounded-full transition-colors"
+                className="w-5 h-5 flex items-center justify-center hover:bg-indigo-100 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
                 aria-label="답글 취소"
               >
                 <i className="fas fa-times"></i>
@@ -217,6 +220,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
                   title={isProfileSet ? '갤러리 생성 시 설정된 프로필입니다.' : '닉네임 입력'}
                   aria-label="댓글 작성자 닉네임"
                   aria-invalid={!!authorError}
+                  aria-required="true"
                   aria-describedby={authorError ? 'comment-author-error' : undefined}
                 />
               </div>
@@ -245,6 +249,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
               maxLength={MAX_COMMENT_LENGTH}
               aria-label={replyTarget ? `${replyTarget.author} 님에게 답글` : '댓글 내용'}
               aria-invalid={!!textError}
+              aria-required="true"
               aria-describedby={textError ? 'comment-text-error' : 'comment-length-help'}
             />
           </div>
@@ -252,13 +257,13 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
           <div className="flex justify-between items-center px-3 pb-3 pt-1 border-t border-slate-50">
             <div className="flex gap-2 text-xs">
               {textError && (
-                <span id="comment-text-error" role="alert" className="text-red-500 font-medium">
+                <span id="comment-text-error" role="alert" className="text-red-600 font-medium">
                   <i className="fas fa-exclamation-circle mr-1" aria-hidden="true"></i>
                   {textError}
                 </span>
               )}
               {authorError && (
-                <span id="comment-author-error" role="alert" className="text-red-500 font-medium">
+                <span id="comment-author-error" role="alert" className="text-red-600 font-medium">
                   <i className="fas fa-exclamation-circle mr-1" aria-hidden="true"></i>
                   {authorError}
                 </span>
@@ -274,7 +279,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
             <button
               type="submit"
               disabled={isAddingComment || currentCommentCount >= maxComments}
-              className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold shadow-md shadow-blue-500/20 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 active:scale-95 hover:-translate-y-0.5"
+              className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold shadow-md shadow-blue-500/20 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 active:scale-95 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
             >
               {isAddingComment ? (
                 <LoadingSpinner small={true} />

@@ -58,7 +58,7 @@ export const GenerationOptionsSection: React.FC<GenerationOptionsSectionProps> =
               ))}
             </select>
             <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-slate-500">
-              <i className="fas fa-chevron-down text-xs"></i>
+              <i className="fas fa-chevron-down text-xs" aria-hidden="true"></i>
             </div>
           </div>
         </div>
@@ -80,7 +80,7 @@ export const GenerationOptionsSection: React.FC<GenerationOptionsSectionProps> =
               ))}
             </select>
             <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-slate-500">
-              <i className="fas fa-chevron-down text-xs"></i>
+              <i className="fas fa-chevron-down text-xs" aria-hidden="true"></i>
             </div>
           </div>
         </div>
@@ -89,7 +89,10 @@ export const GenerationOptionsSection: React.FC<GenerationOptionsSectionProps> =
       <div className="p-5 bg-blue-50/50 rounded-2xl border border-blue-100">
         <div>
           <label htmlFor="topic" className={`${labelClass} text-blue-800`}>
-            갤러리 주제 <span className="text-red-500">*</span>
+            갤러리 주제{' '}
+            <span className="text-red-600" aria-hidden="true">
+              *
+            </span>
           </label>
           <input
             type="text"
@@ -100,10 +103,11 @@ export const GenerationOptionsSection: React.FC<GenerationOptionsSectionProps> =
             className={`${inputClass} bg-white border-blue-200 focus:border-blue-500 text-lg font-medium ${errors.topic ? 'border-red-500 bg-red-50' : ''}`}
             maxLength={20}
             aria-invalid={!!errors.topic}
+            aria-required="true"
             aria-describedby={errors.topic ? 'topic-error' : undefined}
           />
           {errors.topic && (
-            <p id="topic-error" role="alert" className="text-xs text-red-500 mt-1.5 font-medium">
+            <p id="topic-error" role="alert" className="text-xs text-red-600 mt-1.5 font-medium">
               <i className="fas fa-exclamation-circle mr-1" aria-hidden="true"></i>
               {errors.topic}
             </p>
@@ -135,7 +139,7 @@ export const GenerationOptionsSection: React.FC<GenerationOptionsSectionProps> =
             <p
               id="discussion-context-error"
               role="alert"
-              className="text-xs text-red-500 mt-1.5 font-medium"
+              className="text-xs text-red-600 mt-1.5 font-medium"
             >
               <i className="fas fa-exclamation-circle mr-1" aria-hidden="true"></i>
               {errors.discussionContext}

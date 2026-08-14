@@ -5,8 +5,9 @@ import {
 } from './instructions';
 import { NUMBER_OF_POSTS } from '../../constants';
 import { resolveUserNickname } from '../../utils/common';
+import { buildSimulationContextPrompt } from './simulationContext';
 
-export const GALLERY_PROMPT_VERSION = '2.0.4';
+export const GALLERY_PROMPT_VERSION = '2.1.0';
 
 export const buildGalleryGenerationPrompt = (ctx: PromptContext) => {
   const { eraLabelForTitlePrompt, worldviewLabelKoreanPart, eraConstraints } =
@@ -62,6 +63,8 @@ Structure:
 
   const prompt = `
 // PROMPT VERSION: ${GALLERY_PROMPT_VERSION}
+${buildSimulationContextPrompt(ctx)}
+
 **1. CONTEXT & SETTINGS**
 - **Topic:** "${ctx.topic}"
 - **Burning Issue:** "${ctx.discussionContext || 'Daily chatter'}"

@@ -24,6 +24,7 @@ import {
 
 const MAX_RETRIES = 2;
 const MAX_FORMAT_REPAIRS = 1;
+export const MAX_CONCURRENT_PROVIDER_RPCS = 4;
 export const MAX_GALLERY_OUTPUT_TOKENS = 8_192;
 export const MAX_COMMENT_OUTPUT_TOKENS = 4_096;
 export const MAX_EVALUATION_OUTPUT_TOKENS = 256;
@@ -39,6 +40,53 @@ export class MalformedAiResponseError extends Error {
     this.name = 'MalformedAiResponseError';
   }
 }
+
+export class ProviderRpcCapacityError extends Error {
+  readonly status = 503;
+  readonly code = 'AI_PROVIDER_CAPACITY';
+  readonly retryable = true;
+
+  constructor() {
+    super('진행 중인 AI 공급자 요청이 너무 많습니다. 잠시 후 다시 시도해주세요.');
+    this.name = 'ProviderRpcCapacityError';
+  }
+}
+
+export class ProviderRpcLimiter {
+  private active = 0;
+
+  constructor(readonly maxConcurrent = MAX_CONCURRENT_PROVIDER_RPCS) {
+    if (!Number.isInteger(maxConcurrent) || maxConcurrent < 1) {
+      throw new TypeError('maxConcurrent must be a positive integer.');
+    }
+  }
+
+  get activeCount(): number {
+    return this.active;
+  }
+
+  acquire(): () => void {
+    if (this.active >= this.maxConcurrent) throw new ProviderRpcCapacityError();
+    this.active += 1;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.active -= 1;
+    };
+  }
+
+  async run<T>(operation: () => Promise<T>): Promise<T> {
+    const release = this.acquire();
+    try {
+      return await operation();
+    } finally {
+      release();
+    }
+  }
+}
+
+export const providerRpcLimiter = new ProviderRpcLimiter();
 
 type ErrorWithStatus = Error & {
   status?: number;
@@ -57,6 +105,9 @@ const getErrorStatus = (error: unknown): number | undefined => {
 };
 
 export const isRetryableProviderError = (error: unknown): boolean => {
+  // Local capacity must be returned to the caller immediately. Retrying inside
+  // this process cannot create a free provider slot and only amplifies load.
+  if (error instanceof ProviderRpcCapacityError) return false;
   const status = getErrorStatus(error);
   return status === 429 || (status !== undefined && status >= 500 && status <= 599);
 };
@@ -64,6 +115,7 @@ export const isRetryableProviderError = (error: unknown): boolean => {
 interface ProviderRetryOptions {
   signal?: AbortSignal;
   onRetry?: (attempt: number, delayMs: number, error: unknown) => void;
+  limitConcurrency?: boolean;
 }
 
 const throwIfAborted = (signal?: AbortSignal): void => {
@@ -102,13 +154,13 @@ const abortableDelay = (delayMs: number, signal?: AbortSignal): Promise<void> =>
 
 export const withProviderRetry = async <T>(
   operation: () => Promise<T>,
-  { signal, onRetry }: ProviderRetryOptions = {},
+  { signal, onRetry, limitConcurrency = true }: ProviderRetryOptions = {},
 ): Promise<T> => {
   let lastError: unknown;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
     throwIfAborted(signal);
     try {
-      return await operation();
+      return await (limitConcurrency ? providerRpcLimiter.run(operation) : operation());
     } catch (error) {
       lastError = error;
       if (!isRetryableProviderError(error) || attempt === MAX_RETRIES) throw error;
@@ -246,61 +298,77 @@ export const streamGalleryGeneration = async (
   async function* normalize(): AsyncGenerator<GalleryStreamChunk, void, unknown> {
     // Retry is safe only before the first provider chunk is exposed. Once data
     // has been streamed to the caller, replaying would duplicate content.
-    const { iterator, first } = await withProviderRetry(
+    const { iterator, first, release } = await withProviderRetry(
       async () => {
-        const providerStream = await ai.models.generateContentStream({
-          model,
-          contents: prompt,
-          config: { ...config, maxOutputTokens: MAX_GALLERY_OUTPUT_TOKENS },
-        });
-        const streamIterator = providerStream[Symbol.asyncIterator]();
-        const firstChunk = await streamIterator.next();
-        return { iterator: streamIterator, first: firstChunk };
+        const release = providerRpcLimiter.acquire();
+        try {
+          const providerStream = await ai.models.generateContentStream({
+            model,
+            contents: prompt,
+            config: { ...config, maxOutputTokens: MAX_GALLERY_OUTPUT_TOKENS },
+          });
+          const streamIterator = providerStream[Symbol.asyncIterator]();
+          const firstChunk = await streamIterator.next();
+          return { iterator: streamIterator, first: firstChunk, release };
+        } catch (error) {
+          release();
+          throw error;
+        }
       },
-      { signal },
+      { signal, limitConcurrency: false },
     );
 
-    let next = first;
-    while (!next.done) {
-      const chunk = next.value;
-      const groundingMetadata = chunk.candidates?.[0]?.groundingMetadata;
-      const rawGroundingChunks = groundingMetadata?.groundingChunks;
-      const groundingChunks: unknown[] = Array.isArray(rawGroundingChunks)
-        ? rawGroundingChunks
-        : [];
-      const sources = groundingChunks.flatMap(groundingChunk => {
-        const web = (groundingChunk as { web?: unknown } | null)?.web;
-        if (web === undefined) return [];
-        const candidate = web as { title?: unknown; uri?: unknown };
-        return [
-          {
-            ...(typeof candidate?.title === 'string' ? { title: candidate.title } : {}),
-            ...(typeof candidate?.uri === 'string' ? { uri: candidate.uri } : {}),
-          },
-        ];
-      });
-      const rawMetadata = groundingMetadata as
-        | {
-            searchEntryPoint?: unknown;
-            webSearchQueries?: unknown;
-          }
-        | undefined;
-      const searchEntryPoint = rawMetadata?.searchEntryPoint as
-        { renderedContent?: unknown } | undefined;
-      const hasWebGroundingChunk = groundingChunks.some(
-        groundingChunk => (groundingChunk as { web?: unknown } | null)?.web !== undefined,
-      );
-      const hasWebSearchQueries = rawMetadata?.webSearchQueries !== undefined;
-      const hasSearchEntryPoint = rawMetadata?.searchEntryPoint !== undefined;
-      yield {
-        text: chunk.text ?? '',
-        sources,
-        hasSearchMetadata: hasWebGroundingChunk || hasWebSearchQueries || hasSearchEntryPoint,
-        ...(hasSearchEntryPoint
-          ? { searchEntryPointRenderedContent: searchEntryPoint?.renderedContent }
-          : {}),
-      };
-      next = await iterator.next();
+    try {
+      let next = first;
+      while (!next.done) {
+        const chunk = next.value;
+        const groundingMetadata = chunk.candidates?.[0]?.groundingMetadata;
+        const rawGroundingChunks = groundingMetadata?.groundingChunks;
+        const groundingChunks: unknown[] = Array.isArray(rawGroundingChunks)
+          ? rawGroundingChunks
+          : [];
+        const sources = groundingChunks.flatMap(groundingChunk => {
+          const web = (groundingChunk as { web?: unknown } | null)?.web;
+          if (web === undefined) return [];
+          const candidate = web as { title?: unknown; uri?: unknown };
+          return [
+            {
+              ...(typeof candidate?.title === 'string' ? { title: candidate.title } : {}),
+              ...(typeof candidate?.uri === 'string' ? { uri: candidate.uri } : {}),
+            },
+          ];
+        });
+        const rawMetadata = groundingMetadata as
+          | {
+              searchEntryPoint?: unknown;
+              webSearchQueries?: unknown;
+            }
+          | undefined;
+        const searchEntryPoint = rawMetadata?.searchEntryPoint as
+          { renderedContent?: unknown } | undefined;
+        const hasWebGroundingChunk = groundingChunks.some(
+          groundingChunk => (groundingChunk as { web?: unknown } | null)?.web !== undefined,
+        );
+        const hasWebSearchQueries = rawMetadata?.webSearchQueries !== undefined;
+        const hasSearchEntryPoint = rawMetadata?.searchEntryPoint !== undefined;
+        yield {
+          text: chunk.text ?? '',
+          sources,
+          hasSearchMetadata: hasWebGroundingChunk || hasWebSearchQueries || hasSearchEntryPoint,
+          ...(hasSearchEntryPoint
+            ? { searchEntryPointRenderedContent: searchEntryPoint?.renderedContent }
+            : {}),
+        };
+        next = await iterator.next();
+      }
+    } finally {
+      try {
+        await iterator.return?.(undefined);
+      } catch {
+        // Cleanup failures must not hide the generation result or original error.
+      } finally {
+        release();
+      }
     }
   }
 

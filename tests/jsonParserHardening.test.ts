@@ -40,27 +40,23 @@ describe('protected JSON parsing', () => {
     expect(JSON.parse(result)).toEqual({ value: '// kept' });
   });
 
-  it('rejects malformed post elements instead of passing them through', () => {
+  it('rejects malformed posts, comments, and evaluation metrics', () => {
     expect(() =>
       parseGeminiResponse('{"galleryTitle":"g","posts":[null,42,{"title":{}}]}'),
     ).toThrow(/형식/);
-  });
-
-  it('rejects empty or malformed comments', () => {
     expect(() => parseGeminiCommentArrayResponse('[{"author":"a","text":""}]')).toThrow(/댓글/);
     expect(() => parseGeminiCommentArrayResponse('{"unexpected":[]}')).toThrow(/댓글 배열/);
-  });
-
-  it.each([-1, 1.5, Number.MAX_VALUE])('rejects invalid evaluation metric %s', value => {
-    expect(() =>
-      parseGeminiEvaluationResponse(
-        JSON.stringify({
-          suggestedViews: value,
-          suggestedRecommendations: 1,
-          suggestedNonRecommendations: 0,
-        }),
-      ),
-    ).toThrow(/평가 지표/);
+    for (const value of [-1, 1.5, Number.MAX_VALUE]) {
+      expect(() =>
+        parseGeminiEvaluationResponse(
+          JSON.stringify({
+            suggestedViews: value,
+            suggestedRecommendations: 1,
+            suggestedNonRecommendations: 0,
+          }),
+        ),
+      ).toThrow(/평가 지표/);
+    }
   });
 
   it('supports comment wrapper aliases and strips unknown provider fields', () => {

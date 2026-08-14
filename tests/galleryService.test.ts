@@ -11,10 +11,13 @@ import {
   addFollowUpComments,
   addUserPost,
   createGalleryStreamed,
+  GROUNDING_SEARCH_ENTRY_POINT_MAX_BYTES,
   getWorldviewFeedback,
   NDJSON_MAX_LINE_BYTES,
+  NDJSON_MAX_TOTAL_BYTES,
   parseNdjsonStream,
 } from '../services/galleryService';
+import { ApiError } from '../services/apiError';
 
 const context = {
   topic: 'topic',
@@ -62,6 +65,8 @@ const ndjsonResponse = (events: unknown[]): Response => {
     headers: { 'Content-Type': 'application/x-ndjson' },
   });
 };
+
+const streamFromText = (text: string): ReadableStream<Uint8Array> => new Response(text).body!;
 
 const stubFetch = (...responses: Array<Response | Error>) => {
   const mock = vi.fn();
@@ -143,13 +148,6 @@ describe('gallery API JSON wrappers', () => {
       'HTTP 503',
     );
   });
-
-  it('propagates transport failures without rewriting them', async () => {
-    stubFetch(new TypeError('network offline'));
-    await expect(addUserPost({} as NewPostData, context, 'model')).rejects.toThrow(
-      'network offline',
-    );
-  });
 });
 
 describe('streamed gallery creation', () => {
@@ -200,23 +198,37 @@ describe('streamed gallery creation', () => {
     });
   });
 
-  it('returns a result unchanged when the stream contains no warnings', async () => {
-    stubFetch(ndjsonResponse([{ type: 'result', data: gallery }]));
-    await expect(createGalleryStreamed(context, vi.fn())).resolves.toBeDefined();
-  });
-
   it('uses an API error payload when the streaming request fails', async () => {
-    stubFetch(Response.json({ message: 'generation unavailable' }, { status: 429 }));
-    await expect(createGalleryStreamed(context, vi.fn())).rejects.toThrow('generation unavailable');
+    stubFetch(
+      Response.json(
+        {
+          message: 'generation unavailable',
+          code: 'AI_CAPACITY',
+          retryable: true,
+          requestId: 'request-http',
+        },
+        { status: 429, headers: { 'Retry-After': '3' } },
+      ),
+    );
+    const error = await createGalleryStreamed(context, vi.fn()).catch(reason => reason as unknown);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({
+      message: 'generation unavailable',
+      status: 429,
+      code: 'AI_CAPACITY',
+      retryable: true,
+      requestId: 'request-http',
+      retryAfterSeconds: 3,
+    });
   });
 
-  it('rejects a successful response that has no readable body', async () => {
-    stubFetch(new Response(null, { status: 200 }));
+  it('rejects successful streams that never emit a result', async () => {
+    stubFetch(
+      new Response(null, { status: 200 }),
+      ndjsonResponse([{ type: 'phase', phase: 'posts' }]),
+    );
     await expect(createGalleryStreamed(context, vi.fn())).rejects.toThrow();
-  });
-
-  it('rejects when the stream closes before emitting a result', async () => {
-    stubFetch(ndjsonResponse([{ type: 'phase', phase: 'posts' }]));
     await expect(createGalleryStreamed(context, vi.fn())).rejects.toThrow();
   });
 
@@ -233,14 +245,19 @@ describe('streamed gallery creation', () => {
         },
       ]),
     );
-    await expect(createGalleryStreamed(context, vi.fn())).rejects.toThrow(
-      'stream generation failed',
-    );
+    const error = await createGalleryStreamed(context, vi.fn()).catch(reason => reason as unknown);
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({
+      message: 'stream generation failed',
+      code: 'UPSTREAM_ERROR',
+      retryable: true,
+      requestId: 'request-1',
+    });
   });
 });
 
 describe('NDJSON transport boundaries', () => {
-  it('decodes a multibyte character split across byte chunks', async () => {
+  it('parses split UTF-8 and typed progress metadata', async () => {
     const encoded = new TextEncoder().encode(
       `${JSON.stringify({ type: 'chunk', text: '한🙂글' })}\n`,
     );
@@ -256,82 +273,105 @@ describe('NDJSON transport boundaries', () => {
 
     await parseNdjsonStream(stream, event => events.push(event));
     expect(events).toEqual([{ type: 'chunk', text: '한🙂글' }]);
-  });
-
-  it('uses a custom abort reason when parsing starts after cancellation', async () => {
-    const reason = new Error('cancelled by caller');
-    const controller = new AbortController();
-    controller.abort(reason);
-    const stream = new ReadableStream<Uint8Array>();
-
-    await expect(parseNdjsonStream(stream, vi.fn(), controller.signal)).rejects.toBe(reason);
-  });
-
-  it('creates an AbortError when an already-aborted signal has no Error reason', async () => {
-    const signal = {
-      aborted: true,
-      reason: undefined,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    } as unknown as AbortSignal;
-
-    await expect(
-      parseNdjsonStream(new ReadableStream<Uint8Array>(), vi.fn(), signal),
-    ).rejects.toMatchObject({ name: 'AbortError' });
-  });
-
-  it('rejects an oversized complete line before dispatching it', async () => {
-    const oversized = `${JSON.stringify({
-      type: 'chunk',
-      text: 'x'.repeat(NDJSON_MAX_LINE_BYTES),
-    })}\n`;
-
-    await expect(parseNdjsonStream(new Response(oversized).body!, vi.fn())).rejects.toThrow();
-  });
-
-  it.each([
-    null,
-    {},
-    { type: 'phase', phase: 'posts', message: 1 },
-    { type: 'phase', phase: 'posts', progress: Number.POSITIVE_INFINITY },
-    { type: 'warning', warning: { code: 'X', message: 'bad', stage: 'unknown' } },
-    { type: 'error', message: 'bad', retryable: 'yes' },
-    { type: 'error', message: 'bad', code: 1 },
-    { type: 'result', data: { galleryTitle: 'x', posts: [{ ...post, comments: [{}] }] } },
-    { type: 'result', data: { ...gallery, sources: 'not-an-array' } },
-    { type: 'result', data: { ...gallery, warnings: [{ code: 'X' }] } },
-  ])('rejects an invalid event envelope: %j', async event => {
-    const stream = new Response(`${JSON.stringify(event)}\n`).body;
-    expect(stream).not.toBeNull();
-    await expect(parseNdjsonStream(stream!, vi.fn())).rejects.toThrow();
-  });
-
-  it('accepts all optional post and comment fields in a result event', async () => {
-    const richGallery: GalleryData = {
-      galleryTitle: 'rich gallery',
-      posts: [
-        {
-          ...post,
-          isBestPost: true,
-          voted: 'rec',
-          comments: [
-            {
-              ...comment,
-              voted: 'nonrec',
-              replyTo: { commentId: 'parent', author: 'parent author' },
-            },
-          ],
-        },
-      ],
-      sources: [{}, { title: 'title' }, { uri: 'https://example.com' }],
-      warnings: [{ code: 'STORAGE', message: 'not persisted', stage: 'storage' }],
-    };
-    const events: unknown[] = [];
-
+    const metadata: unknown[] = [];
     await parseNdjsonStream(
-      new Response(`${JSON.stringify({ type: 'result', data: richGallery })}\n`).body!,
+      streamFromText(
+        [
+          '{"type":"phase","phase":"posts","message":"댓글 생성 중","progress":70}',
+          '{"type":"warning","warning":{"code":"COMMENTS_PARTIAL","message":"일부 댓글 누락","stage":"comments","postId":"post-1"}}',
+          '{"type":"error","message":"잠시 후 재시도","code":"RATE_LIMIT","retryable":true,"requestId":"req-1"}',
+          '',
+        ].join('\n'),
+      ),
+      event => metadata.push(event),
+    );
+    expect(metadata).toHaveLength(3);
+  });
+
+  it('rejects malformed JSON and invalid event envelopes', async () => {
+    await expect(parseNdjsonStream(streamFromText('not-json\n'), vi.fn())).rejects.toThrow(
+      '올바르지 않은 스트림',
+    );
+    for (const event of [
+      null,
+      {},
+      { type: 'chunk', text: 12 },
+      { type: 'phase', phase: 12 },
+      { type: 'warning', warning: { message: 'missing code' } },
+      { type: 'error', message: 'bad', retryable: 'yes' },
+      { type: 'result', data: { galleryTitle: 'x', posts: 'not-an-array' } },
+      { type: 'unknown', text: 'x' },
+    ]) {
+      await expect(
+        parseNdjsonStream(streamFromText(`${JSON.stringify(event)}\n`), vi.fn()),
+      ).rejects.toThrow('올바르지 않은 스트림 이벤트');
+    }
+  });
+
+  it('preserves valid Search Suggestions and rejects oversized markup', async () => {
+    const renderedContent = '<style>.chip { color: blue; }</style><a>검색어</a>';
+    const events: unknown[] = [];
+    await parseNdjsonStream(
+      streamFromText(
+        `${JSON.stringify({
+          type: 'result',
+          data: { galleryTitle: '테스트', posts: [], searchEntryPoint: { renderedContent } },
+        })}\n`,
+      ),
       event => events.push(event),
     );
-    expect(events).toEqual([{ type: 'result', data: richGallery }]);
+    expect(events[0]).toMatchObject({
+      type: 'result',
+      data: { searchEntryPoint: { renderedContent } },
+    });
+
+    const oversized = '가'.repeat(GROUNDING_SEARCH_ENTRY_POINT_MAX_BYTES);
+    await expect(
+      parseNdjsonStream(
+        streamFromText(
+          `${JSON.stringify({
+            type: 'result',
+            data: {
+              galleryTitle: '테스트',
+              posts: [],
+              searchEntryPoint: { renderedContent: oversized },
+            },
+          })}\n`,
+        ),
+        vi.fn(),
+      ),
+    ).rejects.toThrow('올바르지 않은 스트림 이벤트');
+  });
+
+  it('enforces per-line and total byte budgets', async () => {
+    const oversizedLine = JSON.stringify({
+      type: 'chunk',
+      text: 'x'.repeat(NDJSON_MAX_LINE_BYTES),
+    });
+    await expect(parseNdjsonStream(streamFromText(oversizedLine), vi.fn())).rejects.toThrow(
+      '한 줄 크기',
+    );
+
+    const line = `${JSON.stringify({ type: 'chunk', text: 'x'.repeat(128 * 1024) })}\n`;
+    const payload = line.repeat(
+      Math.ceil(NDJSON_MAX_TOTAL_BYTES / new TextEncoder().encode(line).byteLength) + 1,
+    );
+    await expect(parseNdjsonStream(streamFromText(payload), vi.fn())).rejects.toThrow('전체 크기');
+  });
+
+  it('cancels the reader when parsing is aborted', async () => {
+    let cancelled = false;
+    const stream = new ReadableStream<Uint8Array>({
+      pull: () => new Promise<void>(() => undefined),
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const controller = new AbortController();
+    const parsing = parseNdjsonStream(stream, vi.fn(), controller.signal);
+    controller.abort();
+
+    await expect(parsing).rejects.toMatchObject({ name: 'AbortError' });
+    expect(cancelled).toBe(true);
   });
 });

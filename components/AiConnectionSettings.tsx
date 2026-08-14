@@ -49,6 +49,8 @@ export const AiConnectionSettings: React.FC<AiConnectionSettingsProps> = ({
   const [vertexAuthMode, setVertexAuthMode] = useState<VertexAuthMode>('service_account');
   const [vertexCredentials, setVertexCredentials] = useState('');
   const [vertexProjectId, setVertexProjectId] = useState('');
+  const isVertexAdcAvailable = status?.capabilities?.vertexAdc === true;
+  const showVertexAdcDisabledNotice = !isLoadingStatus && status?.capabilities?.vertexAdc === false;
 
   const refreshStatus = async () => {
     const nextStatus = await getAiCredentialStatus();
@@ -282,12 +284,27 @@ export const AiConnectionSettings: React.FC<AiConnectionSettingsProps> = ({
             <button
               type="button"
               onClick={() => selectVertexAuthMode('adc')}
-              className={`px-3 py-2 rounded-lg border text-sm font-bold transition-colors ${vertexAuthMode === 'adc' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600'}`}
+              disabled={!isVertexAdcAvailable}
+              className={`px-3 py-2 rounded-lg border text-sm font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${vertexAuthMode === 'adc' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600'}`}
               aria-pressed={vertexAuthMode === 'adc'}
+              title={
+                isVertexAdcAvailable
+                  ? undefined
+                  : isLoadingStatus
+                    ? 'ADC 사용 가능 여부를 확인하고 있습니다.'
+                    : '서버에서 ADC 사용을 명시적으로 활성화해야 합니다.'
+              }
             >
               ADC
             </button>
           </div>
+
+          {showVertexAdcDisabledNotice && (
+            <p className="text-xs text-amber-700" role="status">
+              서버의 ADC 사용이 비활성화되어 있습니다. 서버 시작 전에
+              {' DCGM_ENABLE_VERTEX_ADC=1'}을 설정해야 합니다.
+            </p>
+          )}
 
           {vertexAuthMode === 'service_account' ? (
             <div className="space-y-3">
@@ -365,7 +382,7 @@ export const AiConnectionSettings: React.FC<AiConnectionSettingsProps> = ({
               <button
                 type="button"
                 onClick={handleVertexAdcSubmit}
-                disabled={isBusy}
+                disabled={isBusy || !isVertexAdcAvailable}
                 className={primaryButtonClass}
               >
                 {activeAction === 'save-adc' ? '등록 중…' : 'ADC 설정 등록'}
