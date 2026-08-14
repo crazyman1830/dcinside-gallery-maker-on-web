@@ -1,38 +1,41 @@
-
 import { Post, Comment } from '../../types';
 import { PromptContext } from './context';
 import { generatePlayerStatusInstructions } from './instructions';
 import { resolveUserNickname } from '../../utils/common';
 
-export const COMMENT_PROMPT_VERSION = "2.0.3";
+export const COMMENT_PROMPT_VERSION = '2.0.3';
 
 export const buildCommentGenerationPrompt = (
-    userPost: Pick<Post, 'title' | 'author' | 'content'>,
-    galleryContext: PromptContext,
-    minComments: number,
-    maxComments: number
+  userPost: Pick<Post, 'title' | 'author' | 'content'>,
+  galleryContext: PromptContext,
+  minComments: number,
+  maxComments: number,
 ) => {
-    const numberOfCommentsToGenerate = Math.max(minComments, Math.floor(Math.random() * (maxComments - minComments + 1)) + minComments);
-    
-    // Check if the post author is the Current User
-    const currentUserNick = resolveUserNickname(galleryContext.userProfile ?? null);
-    const userIp = galleryContext.userProfile?.nicknameType === 'ANONYMOUS' ? galleryContext.userProfile.ip : null;
-    const isCurrentUserPost = userPost.author === currentUserNick;
-    
-    const authorBanInstruction = `- **AUTHOR BAN (CRITICAL):** You MUST NEVER use "나" or "(글쓴이)" as an author name.${currentUserNick ? ` You MUST ALSO NEVER use exactly "${currentUserNick}" (which is the Active User).` : ''}${userIp ? ` If generating anonymous users, their IP addresses MUST NEVER contain "${userIp}".` : ''} Generate completely separate fictional identities.`;
+  const numberOfCommentsToGenerate = Math.max(
+    minComments,
+    Math.floor(Math.random() * (maxComments - minComments + 1)) + minComments,
+  );
 
-    let reputationEnforcement = "";
-    if (isCurrentUserPost && galleryContext.userProfile) {
-        const statusInstructions = generatePlayerStatusInstructions(galleryContext.userProfile);
-        reputationEnforcement = `
+  // Check if the post author is the Current User
+  const currentUserNick = resolveUserNickname(galleryContext.userProfile ?? null);
+  const userIp =
+    galleryContext.userProfile?.nicknameType === 'ANONYMOUS' ? galleryContext.userProfile.ip : null;
+  const isCurrentUserPost = userPost.author === currentUserNick;
+
+  const authorBanInstruction = `- **AUTHOR BAN (CRITICAL):** You MUST NEVER use "나" or "(글쓴이)" as an author name.${currentUserNick ? ` You MUST ALSO NEVER use exactly "${currentUserNick}" (which is the Active User).` : ''}${userIp ? ` If generating anonymous users, their IP addresses MUST NEVER contain "${userIp}".` : ''} Generate completely separate fictional identities.`;
+
+  let reputationEnforcement = '';
+  if (isCurrentUserPost && galleryContext.userProfile) {
+    const statusInstructions = generatePlayerStatusInstructions(galleryContext.userProfile);
+    reputationEnforcement = `
 **⚠️ TARGET DETECTED: CURRENT USER POST ⚠️**
 The author "${userPost.author}" is the ACTIVE USER defined in the system instructions.
 ${statusInstructions}
 **MANDATORY:** You MUST generate comments that reflect the user's status (e.g., if Hated, roast them; if Idol, praise them).
         `;
-    }
+  }
 
-    const prompt = `
+  const prompt = `
 // PROMPT VERSION: ${COMMENT_PROMPT_VERSION}
 **1. CONTEXT: TARGET POST**
 - Title: "${userPost.title}"
@@ -56,41 +59,49 @@ ${authorBanInstruction}
 Generate ${numberOfCommentsToGenerate} comments for the post above. Ensure the tone is chatty and authentic to the community settings.
     `;
 
-    return { prompt, numberOfCommentsToGenerate };
+  return { prompt, numberOfCommentsToGenerate };
 };
 
 export const buildFollowUpCommentPrompt = (
-    originalPost: Pick<Post, 'title' | 'author' | 'content'>,
-    existingComments: Comment[],
-    galleryContext: PromptContext,
-    minCommentsToGenerate: number,
-    maxCommentsToGenerate: number
+  originalPost: Pick<Post, 'title' | 'author' | 'content'>,
+  existingComments: Comment[],
+  galleryContext: PromptContext,
+  minCommentsToGenerate: number,
+  maxCommentsToGenerate: number,
 ) => {
-    const numberOfCommentsToGenerate = Math.max(minCommentsToGenerate, Math.floor(Math.random() * (maxCommentsToGenerate - minCommentsToGenerate + 1)) + minCommentsToGenerate);
+  const numberOfCommentsToGenerate = Math.max(
+    minCommentsToGenerate,
+    Math.floor(Math.random() * (maxCommentsToGenerate - minCommentsToGenerate + 1)) +
+      minCommentsToGenerate,
+  );
 
-    // Context summary
-    const contextSummary = existingComments.slice(-5).map(c => `${c.author}: ${c.text.substring(0, 50)}`).join('\n');
-    
-    // Check if the LAST comment was made by the User
-    const lastComment = existingComments[existingComments.length - 1];
-    const currentUserNick = resolveUserNickname(galleryContext.userProfile ?? null);
-    const userIp = galleryContext.userProfile?.nicknameType === 'ANONYMOUS' ? galleryContext.userProfile.ip : null;
-    const isLastCommentByUser = lastComment && lastComment.author === currentUserNick;
+  // Context summary
+  const contextSummary = existingComments
+    .slice(-5)
+    .map(c => `${c.author}: ${c.text.substring(0, 50)}`)
+    .join('\n');
 
-    const authorBanInstruction = `- **AUTHOR BAN (CRITICAL):** You MUST NEVER use "나" or "(글쓴이)" as an author name.${currentUserNick ? ` You MUST ALSO NEVER use exactly "${currentUserNick}" (which is the Active User).` : ''}${userIp ? ` If generating anonymous users, their IP addresses MUST NEVER contain "${userIp}".` : ''} Generate completely separate fictional identities.`;
+  // Check if the LAST comment was made by the User
+  const lastComment = existingComments[existingComments.length - 1];
+  const currentUserNick = resolveUserNickname(galleryContext.userProfile ?? null);
+  const userIp =
+    galleryContext.userProfile?.nicknameType === 'ANONYMOUS' ? galleryContext.userProfile.ip : null;
+  const isLastCommentByUser = lastComment && lastComment.author === currentUserNick;
 
-    let reputationEnforcement = "";
-    if (isLastCommentByUser && galleryContext.userProfile) {
-         const statusInstructions = generatePlayerStatusInstructions(galleryContext.userProfile);
-         reputationEnforcement = `
+  const authorBanInstruction = `- **AUTHOR BAN (CRITICAL):** You MUST NEVER use "나" or "(글쓴이)" as an author name.${currentUserNick ? ` You MUST ALSO NEVER use exactly "${currentUserNick}" (which is the Active User).` : ''}${userIp ? ` If generating anonymous users, their IP addresses MUST NEVER contain "${userIp}".` : ''} Generate completely separate fictional identities.`;
+
+  let reputationEnforcement = '';
+  if (isLastCommentByUser && galleryContext.userProfile) {
+    const statusInstructions = generatePlayerStatusInstructions(galleryContext.userProfile);
+    reputationEnforcement = `
 **⚠️ TARGET DETECTED: CURRENT USER COMMENT ⚠️**
 The last comment was made by "${lastComment.author}", who is the ACTIVE USER.
 ${statusInstructions}
 **MANDATORY:** The new comments must REACT IMMEDIATELY to this user based on their status (e.g., attack them if Hated, agree if Idol).
          `;
-    }
+  }
 
-    const prompt = `
+  const prompt = `
 // PROMPT VERSION: ${COMMENT_PROMPT_VERSION}
 **1. CONTEXT**
 - Post: "${originalPost.title}"
@@ -113,5 +124,5 @@ ${authorBanInstruction}
 Continue the discussion with ${numberOfCommentsToGenerate} new comments.
     `;
 
-    return { prompt, numberOfCommentsToGenerate };
+  return { prompt, numberOfCommentsToGenerate };
 };

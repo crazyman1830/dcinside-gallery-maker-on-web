@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { LoadingSpinner } from './LoadingSpinner';
 import { MAX_COMMENT_AUTHOR_LENGTH } from '../constants';
 import { UserProfile } from '../types';
@@ -9,202 +8,267 @@ interface WritePostModalProps {
   isOpen: boolean;
   currentUserProfile: UserProfile | null;
   onClose: () => void;
-  onSave: (title: string, author: string, content: string) => Promise<void>;
+  onSave: (title: string, author: string, content: string) => Promise<void | boolean>;
   isSaving: boolean;
 }
 
 const MAX_TITLE_LENGTH = 50;
 const MAX_CONTENT_LENGTH = 500;
 
-export const WritePostModal: React.FC<WritePostModalProps> = ({ isOpen, currentUserProfile, onClose, onSave, isSaving }) => {
+const validateRequired = (value: string, label: string, maxLength: number): string => {
+  if (!value.trim()) return `${label}을 입력해주세요.`;
+  if (value.length > maxLength) return `${label}은 ${maxLength}자 이내로 입력해주세요.`;
+  return '';
+};
+
+export const WritePostModal: React.FC<WritePostModalProps> = ({
+  isOpen,
+  currentUserProfile,
+  onClose,
+  onSave,
+  isSaving,
+}) => {
   const [title, setTitle] = useState('');
   const [author, setAuthor] = useState('');
   const [content, setContent] = useState('');
   const [titleError, setTitleError] = useState('');
   const [authorError, setAuthorError] = useState('');
   const [contentError, setContentError] = useState('');
-  
+  const dialogRef = useRef<HTMLDialogElement>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
-  const triggerElementRef = useRef<Element | null>(null);
+  const authorInputRef = useRef<HTMLInputElement>(null);
+  const contentInputRef = useRef<HTMLTextAreaElement>(null);
+  const triggerElementRef = useRef<HTMLElement | null>(null);
+  const wasOpenRef = useRef(false);
 
   const isProfileSet = !!currentUserProfile;
 
   useEffect(() => {
-    if (isOpen) {
-      triggerElementRef.current = document.activeElement;
-      titleInputRef.current?.focus();
+    const dialog = dialogRef.current;
+    if (!dialog) return;
 
+    if (isOpen && !dialog.open) {
+      triggerElementRef.current =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null;
       setTitle('');
-      
-      // Initialize author from profile
-      const initialAuthor = resolveUserNickname(currentUserProfile);
-      setAuthor(initialAuthor);
-
+      setAuthor(resolveUserNickname(currentUserProfile));
       setContent('');
       setTitleError('');
       setAuthorError('');
       setContentError('');
-    } else if (triggerElementRef.current) {
-        (triggerElementRef.current as HTMLElement).focus();
-    }
-  }, [isOpen, currentUserProfile]);
-
-  const validate = (): boolean => {
-    let isValid = true;
-    if (!title.trim()) {
-      setTitleError('제목을 입력해주세요.');
-      isValid = false;
-    } else if (title.length > MAX_TITLE_LENGTH) {
-      setTitleError(`제목은 ${MAX_TITLE_LENGTH}자 이내로 입력해주세요.`);
-      isValid = false;
-    } else {
-      setTitleError('');
-    }
-
-    if (!author.trim()) {
-      setAuthorError('닉네임을 입력해주세요.');
-      isValid = false;
-    } else if (author.length > MAX_COMMENT_AUTHOR_LENGTH + 8) {
-      setAuthorError(`닉네임이 너무 깁니다.`);
-      isValid = false;
-    } else {
-      setAuthorError('');
-    }
-
-    if (!content.trim()) {
-      setContentError('내용을 입력해주세요.');
-      isValid = false;
-    } else if (content.length > MAX_CONTENT_LENGTH) {
-      setContentError(`내용은 ${MAX_CONTENT_LENGTH}자 이내로 입력해주세요.`);
-      isValid = false;
-    } else {
-      setContentError('');
-    }
-    return isValid;
-  };
-
-  const handleSave = async () => {
-    if (!validate()) {
+      dialog.showModal();
+      wasOpenRef.current = true;
+      requestAnimationFrame(() => titleInputRef.current?.focus());
       return;
     }
-    await onSave(title, author, content);
+
+    if (!isOpen && dialog.open) dialog.close();
+    if (!isOpen && wasOpenRef.current) {
+      wasOpenRef.current = false;
+      requestAnimationFrame(() => triggerElementRef.current?.focus());
+    }
+  }, [currentUserProfile, isOpen]);
+
+  useEffect(
+    () => () => {
+      if (wasOpenRef.current) triggerElementRef.current?.focus();
+    },
+    [],
+  );
+
+  const validate = (): boolean => {
+    const nextTitleError = validateRequired(title, '제목', MAX_TITLE_LENGTH);
+    const nextAuthorError = validateRequired(author, '닉네임', MAX_COMMENT_AUTHOR_LENGTH + 8);
+    const nextContentError = validateRequired(content, '내용', MAX_CONTENT_LENGTH);
+    setTitleError(nextTitleError);
+    setAuthorError(nextAuthorError);
+    setContentError(nextContentError);
+    if (nextTitleError) titleInputRef.current?.focus();
+    else if (nextAuthorError) authorInputRef.current?.focus();
+    else if (nextContentError) contentInputRef.current?.focus();
+    return !nextTitleError && !nextAuthorError && !nextContentError;
   };
 
-  if (!isOpen) {
-    return null;
-  }
-
-  const inputClass = "w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200 text-slate-700 placeholder-slate-400 outline-none";
-  const labelClass = "block text-sm font-bold text-slate-700 mb-2";
+  const handleSave = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (isSaving || !validate()) return;
+    await onSave(title.trim(), author.trim(), content.trim());
+  };
 
   return (
-    <div
-        className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="write-post-modal-title"
+    <dialog
+      ref={dialogRef}
+      className="m-auto max-h-[90vh] w-[calc(100%-2rem)] max-w-xl overflow-hidden rounded-2xl bg-white p-0 shadow-2xl backdrop:bg-slate-900/50 backdrop:backdrop-blur-sm"
+      aria-labelledby="write-post-modal-title"
+      onCancel={event => {
+        event.preventDefault();
+        if (!isSaving) onClose();
+      }}
     >
-      {/* Backdrop */}
-      <div 
-        className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" 
-        onClick={onClose}
-      ></div>
-
-      {/* Modal Content */}
-      <div
-        className="relative bg-white rounded-2xl shadow-2xl w-full max-w-xl transform transition-all flex flex-col max-h-[90vh]"
-        onClick={(e) => e.stopPropagation()} 
-      >
-        <div className="px-6 py-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 rounded-t-2xl">
-          <h2 id="write-post-modal-title" className="text-xl font-bold text-slate-800 flex items-center gap-2">
-            <i className="fas fa-pen-nib text-blue-600"></i> 새 글 작성
+      <form onSubmit={handleSave} className="flex max-h-[90vh] flex-col">
+        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/50 px-5 py-4 sm:px-6 sm:py-5">
+          <h2
+            id="write-post-modal-title"
+            className="flex items-center gap-2 text-xl font-bold text-slate-800"
+          >
+            <i className="fas fa-pen-nib text-blue-600" aria-hidden="true" /> 새 글 작성
           </h2>
           <button
+            type="button"
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 transition-colors w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100"
+            disabled={isSaving}
+            className="flex h-10 w-10 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
             aria-label="닫기"
           >
-            <i className="fas fa-times text-lg"></i>
+            <i className="fas fa-times text-lg" aria-hidden="true" />
           </button>
         </div>
 
-        <div className="p-6 overflow-y-auto space-y-5">
+        <div className="space-y-5 overflow-y-auto p-5 sm:p-6">
           <div>
-            <label htmlFor="postTitle" className={labelClass}>제목</label>
+            <label htmlFor="postTitle" className="mb-2 block text-sm font-bold text-slate-700">
+              제목
+            </label>
             <input
               ref={titleInputRef}
               type="text"
               id="postTitle"
               value={title}
-              onChange={(e) => {setTitle(e.target.value); if(titleError) validate();}}
-              className={`${inputClass} ${titleError ? 'border-red-500 bg-red-50' : ''}`}
+              onChange={event => {
+                const nextValue = event.target.value;
+                setTitle(nextValue);
+                if (titleError)
+                  setTitleError(validateRequired(nextValue, '제목', MAX_TITLE_LENGTH));
+              }}
+              className={`w-full rounded-xl border bg-slate-50 px-4 py-3 text-slate-700 outline-none transition-colors focus:bg-white focus:ring-2 focus:ring-blue-500/20 ${titleError ? 'border-red-500 bg-red-50' : 'border-slate-200 focus:border-blue-500'}`}
               maxLength={MAX_TITLE_LENGTH}
               placeholder="흥미로운 제목을 입력하세요"
+              aria-invalid={!!titleError}
+              aria-describedby={titleError ? 'post-title-error' : undefined}
             />
-            {titleError && <p className="mt-1.5 text-xs text-red-500 font-medium"><i className="fas fa-exclamation-circle mr-1"></i>{titleError}</p>}
+            {titleError && (
+              <p
+                id="post-title-error"
+                role="alert"
+                className="mt-1.5 text-xs font-medium text-red-600"
+              >
+                {titleError}
+              </p>
+            )}
           </div>
 
           <div>
-            <label htmlFor="postAuthor" className={labelClass}>닉네임</label>
-            <div className="relative">
-                <input
-                type="text"
-                id="postAuthor"
-                value={author}
-                onChange={(e) => {setAuthor(e.target.value); if(authorError) validate();}}
-                readOnly={isProfileSet}
-                className={`${inputClass} ${authorError ? 'border-red-500 bg-red-50' : ''} ${isProfileSet ? 'cursor-not-allowed text-slate-500 bg-slate-100' : ''}`}
-                placeholder="닉네임"
-                />
-                {isProfileSet && (
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                        <span className="text-[10px] text-slate-400 bg-white px-2 py-1 rounded-full border border-slate-200">
-                            <i className="fas fa-lock mr-1"></i>고정됨
-                        </span>
-                    </div>
-                )}
-            </div>
-            {isProfileSet && <p className="text-xs text-slate-400 mt-1.5"><i className="fas fa-info-circle mr-1"></i>갤러리 설정에서 지정된 프로필을 사용합니다.</p>}
-            {authorError && <p className="mt-1.5 text-xs text-red-500 font-medium"><i className="fas fa-exclamation-circle mr-1"></i>{authorError}</p>}
+            <label htmlFor="postAuthor" className="mb-2 block text-sm font-bold text-slate-700">
+              닉네임
+            </label>
+            <input
+              ref={authorInputRef}
+              type="text"
+              id="postAuthor"
+              value={author}
+              onChange={event => {
+                const nextValue = event.target.value;
+                setAuthor(nextValue);
+                if (authorError)
+                  setAuthorError(
+                    validateRequired(nextValue, '닉네임', MAX_COMMENT_AUTHOR_LENGTH + 8),
+                  );
+              }}
+              readOnly={isProfileSet}
+              className={`w-full rounded-xl border px-4 py-3 text-slate-700 outline-none transition-colors focus:ring-2 focus:ring-blue-500/20 ${authorError ? 'border-red-500 bg-red-50' : 'border-slate-200'} ${isProfileSet ? 'cursor-not-allowed bg-slate-100 text-slate-500' : 'bg-slate-50 focus:border-blue-500 focus:bg-white'}`}
+              placeholder="닉네임"
+              aria-invalid={!!authorError}
+              aria-describedby={
+                [authorError ? 'post-author-error' : '', isProfileSet ? 'post-author-help' : '']
+                  .filter(Boolean)
+                  .join(' ') || undefined
+              }
+            />
+            {isProfileSet && (
+              <p id="post-author-help" className="mt-1.5 text-xs text-slate-500">
+                갤러리 설정에서 지정된 프로필을 사용합니다.
+              </p>
+            )}
+            {authorError && (
+              <p
+                id="post-author-error"
+                role="alert"
+                className="mt-1.5 text-xs font-medium text-red-600"
+              >
+                {authorError}
+              </p>
+            )}
           </div>
 
           <div>
-            <label htmlFor="postContent" className={labelClass}>내용</label>
+            <label htmlFor="postContent" className="mb-2 block text-sm font-bold text-slate-700">
+              내용
+            </label>
             <textarea
+              ref={contentInputRef}
               id="postContent"
               value={content}
-              onChange={(e) => {setContent(e.target.value); if(contentError) validate();}}
+              onChange={event => {
+                const nextValue = event.target.value;
+                setContent(nextValue);
+                if (contentError)
+                  setContentError(validateRequired(nextValue, '내용', MAX_CONTENT_LENGTH));
+              }}
               rows={8}
-              className={`${inputClass} resize-y min-h-[150px] ${contentError ? 'border-red-500 bg-red-50' : ''}`}
+              className={`min-h-[150px] w-full resize-y rounded-xl border bg-slate-50 px-4 py-3 text-slate-700 outline-none transition-colors focus:bg-white focus:ring-2 focus:ring-blue-500/20 ${contentError ? 'border-red-500 bg-red-50' : 'border-slate-200 focus:border-blue-500'}`}
               maxLength={MAX_CONTENT_LENGTH}
               placeholder="내용을 자유롭게 작성하세요."
-            ></textarea>
-            <div className="flex justify-between mt-1.5">
-                {contentError ? <p className="text-xs text-red-500 font-medium"><i className="fas fa-exclamation-circle mr-1"></i>{contentError}</p> : <span></span>}
-                <p className="text-xs text-slate-400">{content.length}/{MAX_CONTENT_LENGTH}</p>
+              aria-invalid={!!contentError}
+              aria-describedby={
+                contentError ? 'post-content-error post-content-count' : 'post-content-count'
+              }
+            />
+            <div className="mt-1.5 flex justify-between gap-3">
+              {contentError ? (
+                <p
+                  id="post-content-error"
+                  role="alert"
+                  className="text-xs font-medium text-red-600"
+                >
+                  {contentError}
+                </p>
+              ) : (
+                <span />
+              )}
+              <p id="post-content-count" className="text-xs text-slate-600">
+                {content.length}/{MAX_CONTENT_LENGTH}
+              </p>
             </div>
           </div>
         </div>
 
-        <div className="px-6 py-5 bg-slate-50/50 border-t border-slate-100 rounded-b-2xl flex justify-end space-x-3">
+        <div className="flex justify-end gap-3 border-t border-slate-100 bg-slate-50/50 px-5 py-4 sm:px-6 sm:py-5">
           <button
             type="button"
             onClick={onClose}
             disabled={isSaving}
-            className="px-5 py-2.5 text-sm font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl shadow-sm transition-all"
+            className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-600 shadow-sm transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
           >
             취소
           </button>
           <button
-            type="button"
-            onClick={handleSave}
+            type="submit"
             disabled={isSaving}
-            className="px-6 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md shadow-blue-500/30 transition-all flex items-center"
+            className="flex min-w-28 items-center justify-center rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-blue-500/30 transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {isSaving ? <LoadingSpinner small={true} /> : <><i className="fas fa-check mr-2"></i> 등록하기</>}
+            {isSaving ? (
+              <>
+                <LoadingSpinner small />
+                <span className="sr-only">등록 중</span>
+              </>
+            ) : (
+              <>
+                <i className="fas fa-check mr-2" aria-hidden="true" /> 등록하기
+              </>
+            )}
           </button>
         </div>
-      </div>
-    </div>
+      </form>
+    </dialog>
   );
 };

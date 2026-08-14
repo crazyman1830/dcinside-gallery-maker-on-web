@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { GalleryFormSettings, Preset } from '../types';
+import type { GalleryFormSettings } from '../types';
 import {
   ADVANCED_PRESET_FIELDS,
   getPresetContentSettings,
@@ -20,8 +20,6 @@ const legacySettings: GalleryFormSettings = {
   manualMalePercentage: 50,
   isManualAgeRange: false,
   manualSelectedAgeGroups: [],
-  isQualityUpgradeUnlocked: true,
-  isQualityUpgradeEnabled: false,
   isSearchEnabled: false,
   selectedModel: 'gemini-3.1-flash-lite-preview',
   userNicknameType: 'ANONYMOUS',
@@ -31,11 +29,12 @@ const legacySettings: GalleryFormSettings = {
 
 describe('preset migration', () => {
   it('defaults legacy presets to Gemini without introducing secrets', () => {
-    const preset: Preset = { id: 'legacy', name: 'legacy', settings: legacySettings };
+    const preset = { id: 'legacy', name: 'legacy', settings: legacySettings };
     const migrated = migratePreset(preset);
 
-    expect(migrated.settings.selectedProvider).toBe('gemini');
-    expect(migrated.settings.selectedModel).toBe('gemini-3.5-flash-lite');
+    expect(migrated.settings).not.toHaveProperty('selectedProvider');
+    expect(migrated.settings).not.toHaveProperty('selectedModel');
+    expect(migrated.settings).not.toHaveProperty('isSearchEnabled');
     expect(JSON.stringify(migrated)).not.toMatch(/apiKey|private_key|credentials/i);
   });
 
@@ -45,8 +44,6 @@ describe('preset migration', () => {
       selectedProvider: 'vertex',
       selectedModel: 'gemini-3.1-pro-preview',
       isSearchEnabled: true,
-      isQualityUpgradeUnlocked: false,
-      isQualityUpgradeEnabled: true,
     });
 
     expect(content.topic).toBe('test');

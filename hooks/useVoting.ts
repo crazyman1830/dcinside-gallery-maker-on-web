@@ -1,11 +1,10 @@
-
 import { useState, useCallback, useEffect } from 'react';
 
 export const useVoting = (
   initialRecs: number,
   initialNonRecs: number,
   initialVoted: 'rec' | 'nonrec' | null = null,
-  onVoteChange?: (voted: 'rec' | 'nonrec' | null, recs: number, nonRecs: number) => void
+  onVoteChange?: (voted: 'rec' | 'nonrec' | null, recs: number, nonRecs: number) => void,
 ) => {
   const [recs, setRecs] = useState(initialRecs);
   const [nonRecs, setNonRecs] = useState(initialNonRecs);
@@ -29,18 +28,18 @@ export const useVoting = (
     let nextNonRecs = nonRecs;
 
     if (voted === 'rec') {
-        // Cancel recommendation
-        nextRecs = recs - 1;
-        nextVoted = null;
+      // Cancel recommendation
+      nextRecs = recs - 1;
+      nextVoted = null;
     } else if (voted === 'nonrec') {
-        // Switch to recommendation
-        nextRecs = recs + 1;
-        nextNonRecs = nonRecs - 1;
-        nextVoted = 'rec';
+      // Switch to recommendation
+      nextRecs = recs + 1;
+      nextNonRecs = nonRecs - 1;
+      nextVoted = 'rec';
     } else {
-        // New recommendation
-        nextRecs = recs + 1;
-        nextVoted = 'rec';
+      // New recommendation
+      nextRecs = recs + 1;
+      nextVoted = 'rec';
     }
 
     setRecs(nextRecs);
@@ -58,18 +57,18 @@ export const useVoting = (
     let nextNonRecs = nonRecs;
 
     if (voted === 'nonrec') {
-        // Cancel non-recommendation
-        nextNonRecs = nonRecs - 1;
-        nextVoted = null;
+      // Cancel non-recommendation
+      nextNonRecs = nonRecs - 1;
+      nextVoted = null;
     } else if (voted === 'rec') {
-        // Switch to non-recommendation
-        nextNonRecs = nonRecs + 1;
-        nextRecs = recs - 1;
-        nextVoted = 'nonrec';
+      // Switch to non-recommendation
+      nextNonRecs = nonRecs + 1;
+      nextRecs = recs - 1;
+      nextVoted = 'nonrec';
     } else {
-        // New non-recommendation
-        nextNonRecs = nonRecs + 1;
-        nextVoted = 'nonrec';
+      // New non-recommendation
+      nextNonRecs = nonRecs + 1;
+      nextVoted = 'nonrec';
     }
 
     setRecs(nextRecs);

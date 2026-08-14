@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { isRetryableProviderError, withProviderRetry } from '../server/ai/generation';
 
-const statusError = (status: number): Error => Object.assign(new Error(`HTTP ${status}`), { status });
+const statusError = (status: number): Error =>
+  Object.assign(new Error(`HTTP ${status}`), { status });
 
 describe('provider retry policy', () => {
   afterEach(() => vi.useRealTimers());
@@ -16,7 +17,8 @@ describe('provider retry policy', () => {
 
   it('uses two backoff retries for retryable failures', async () => {
     vi.useFakeTimers();
-    const operation = vi.fn()
+    const operation = vi
+      .fn()
       .mockRejectedValueOnce(statusError(503))
       .mockRejectedValueOnce(statusError(429))
       .mockResolvedValue('ok');

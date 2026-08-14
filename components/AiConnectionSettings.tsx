@@ -13,6 +13,9 @@ import {
 interface AiConnectionSettingsProps {
   selectedProvider: AiProvider;
   selectedModel: string;
+  initialStatus?: AiCredentialStatus | null;
+  isInitialStatusLoading?: boolean;
+  onStatusChange?: (status: AiCredentialStatus) => void;
 }
 
 type ActionName = 'save-gemini' | 'save-vertex' | 'save-adc' | 'test' | 'delete';
@@ -22,9 +25,8 @@ interface Notice {
   message: string;
 }
 
-const getErrorMessage = (error: unknown): string => (
-  error instanceof Error ? error.message : '요청 처리 중 오류가 발생했습니다.'
-);
+const getErrorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : '요청 처리 중 오류가 발생했습니다.';
 
 const getAuthModeLabel = (authMode?: VertexAuthMode): string => {
   if (authMode === 'service_account') return '서비스 계정 JSON';
@@ -35,9 +37,12 @@ const getAuthModeLabel = (authMode?: VertexAuthMode): string => {
 export const AiConnectionSettings: React.FC<AiConnectionSettingsProps> = ({
   selectedProvider,
   selectedModel,
+  initialStatus = null,
+  isInitialStatusLoading = true,
+  onStatusChange,
 }) => {
-  const [status, setStatus] = useState<AiCredentialStatus | null>(null);
-  const [isLoadingStatus, setIsLoadingStatus] = useState(true);
+  const [status, setStatus] = useState<AiCredentialStatus | null>(initialStatus);
+  const [isLoadingStatus, setIsLoadingStatus] = useState(isInitialStatusLoading);
   const [activeAction, setActiveAction] = useState<ActionName | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [geminiApiKey, setGeminiApiKey] = useState('');
@@ -48,6 +53,7 @@ export const AiConnectionSettings: React.FC<AiConnectionSettingsProps> = ({
   const refreshStatus = async () => {
     const nextStatus = await getAiCredentialStatus();
     setStatus(nextStatus);
+    onStatusChange?.(nextStatus);
   };
 
   useEffect(() => {
@@ -59,6 +65,7 @@ export const AiConnectionSettings: React.FC<AiConnectionSettingsProps> = ({
         const nextStatus = await getAiCredentialStatus();
         if (isMounted) {
           setStatus(nextStatus);
+          onStatusChange?.(nextStatus);
           setNotice(null);
         }
       } catch (error) {
@@ -74,7 +81,13 @@ export const AiConnectionSettings: React.FC<AiConnectionSettingsProps> = ({
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [onStatusChange]);
+
+  useEffect(() => {
+    if (!initialStatus) return;
+    setStatus(initialStatus);
+    setIsLoadingStatus(false);
+  }, [initialStatus]);
 
   useEffect(() => {
     setGeminiApiKey('');
@@ -182,36 +195,55 @@ export const AiConnectionSettings: React.FC<AiConnectionSettingsProps> = ({
 
   const selectedStatus = status?.providers[selectedProvider];
   const isBusy = activeAction !== null;
-  const inputClass = 'w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-colors text-sm';
-  const primaryButtonClass = 'px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed transition-colors';
-  const secondaryButtonClass = 'px-4 py-2.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed transition-colors';
+  const inputClass =
+    'w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-colors text-sm';
+  const primaryButtonClass =
+    'px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed transition-colors';
+  const secondaryButtonClass =
+    'px-4 py-2.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed transition-colors';
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-4" aria-labelledby="ai-connection-title">
+    <section
+      id="ai-connection-settings"
+      tabIndex={-1}
+      className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-4 outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+      aria-labelledby="ai-connection-title"
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 id="ai-connection-title" className="text-sm font-bold text-slate-800">AI 연결 및 자격증명</h3>
+          <h3 id="ai-connection-title" className="text-sm font-bold text-slate-800">
+            AI 연결 및 자격증명
+          </h3>
           <p className="mt-1 text-xs text-slate-500">
             자격증명은 서버로만 전송되며 프리셋이나 브라우저 저장소에 보관하지 않습니다.
           </p>
         </div>
         <div className="flex items-center gap-2 text-xs font-bold">
-          <span className={`h-2.5 w-2.5 rounded-full ${selectedStatus?.configured ? 'bg-emerald-500' : 'bg-slate-300'}`} aria-hidden="true" />
-          {isLoadingStatus ? '상태 확인 중…' : selectedStatus?.configured ? '연결 설정됨' : '연결 필요'}
+          <span
+            className={`h-2.5 w-2.5 rounded-full ${selectedStatus?.configured ? 'bg-emerald-500' : 'bg-slate-300'}`}
+            aria-hidden="true"
+          />
+          {isLoadingStatus
+            ? '상태 확인 중…'
+            : selectedStatus?.configured
+              ? '연결 설정됨'
+              : '연결 필요'}
         </div>
       </div>
 
       {selectedProvider === 'gemini' ? (
         <div className="space-y-3">
-          <label htmlFor="geminiApiKey" className="block text-sm font-bold text-slate-700">Gemini API 키</label>
+          <label htmlFor="geminiApiKey" className="block text-sm font-bold text-slate-700">
+            Gemini API 키
+          </label>
           <input
             id="geminiApiKey"
             type="password"
             autoComplete="off"
             spellCheck={false}
             value={geminiApiKey}
-            onChange={(event) => setGeminiApiKey(event.target.value)}
-            onKeyDown={(event) => {
+            onChange={event => setGeminiApiKey(event.target.value)}
+            onKeyDown={event => {
               if (event.key === 'Enter') {
                 event.preventDefault();
                 handleGeminiSubmit();
@@ -220,14 +252,25 @@ export const AiConnectionSettings: React.FC<AiConnectionSettingsProps> = ({
             placeholder="Google AI Studio API 키"
             className={inputClass}
           />
-          <p className="text-xs text-slate-500">등록 후 입력란은 즉시 비워집니다. 기존 키는 화면에 다시 표시되지 않습니다.</p>
-          <button type="button" onClick={handleGeminiSubmit} disabled={isBusy || !geminiApiKey.trim()} className={primaryButtonClass}>
+          <p className="text-xs text-slate-500">
+            등록 후 입력란은 즉시 비워집니다. 기존 키는 화면에 다시 표시되지 않습니다.
+          </p>
+          <button
+            type="button"
+            onClick={handleGeminiSubmit}
+            disabled={isBusy || !geminiApiKey.trim()}
+            className={primaryButtonClass}
+          >
             {activeAction === 'save-gemini' ? '등록 중…' : 'API 키 등록'}
           </button>
         </div>
       ) : (
         <div className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" role="group" aria-label="Vertex 인증 방식">
+          <div
+            className="grid grid-cols-1 sm:grid-cols-2 gap-2"
+            role="group"
+            aria-label="Vertex 인증 방식"
+          >
             <button
               type="button"
               onClick={() => selectVertexAuthMode('service_account')}
@@ -249,44 +292,64 @@ export const AiConnectionSettings: React.FC<AiConnectionSettingsProps> = ({
           {vertexAuthMode === 'service_account' ? (
             <div className="space-y-3">
               <div>
-                <label htmlFor="vertexCredentialFile" className="block text-sm font-bold text-slate-700 mb-2">서비스 계정 키 파일</label>
+                <label
+                  htmlFor="vertexCredentialFile"
+                  className="block text-sm font-bold text-slate-700 mb-2"
+                >
+                  서비스 계정 키 파일
+                </label>
                 <input
                   id="vertexCredentialFile"
                   type="file"
                   accept="application/json,.json"
-                  onChange={(event) => void handleCredentialFile(event)}
+                  onChange={event => void handleCredentialFile(event)}
                   className="block w-full text-sm text-slate-600 file:mr-3 file:px-3 file:py-2 file:rounded-lg file:border-0 file:bg-blue-50 file:text-blue-700 file:font-bold hover:file:bg-blue-100"
                 />
               </div>
               <div>
-                <label htmlFor="vertexCredentials" className="block text-sm font-bold text-slate-700 mb-2">또는 JSON 직접 붙여넣기</label>
+                <label
+                  htmlFor="vertexCredentials"
+                  className="block text-sm font-bold text-slate-700 mb-2"
+                >
+                  또는 JSON 직접 붙여넣기
+                </label>
                 <textarea
                   id="vertexCredentials"
                   rows={4}
                   autoComplete="off"
                   spellCheck={false}
                   value={vertexCredentials}
-                  onChange={(event) => setVertexCredentials(event.target.value)}
+                  onChange={event => setVertexCredentials(event.target.value)}
                   placeholder="서비스 계정 JSON 전체를 붙여넣으세요."
                   className={`${inputClass} resize-y font-mono`}
                 />
               </div>
-              <p className="text-xs text-amber-700">이 파일은 브라우저에 저장되지 않습니다. 등록 후 원본 키 파일은 프로젝트 폴더 밖에서 안전하게 관리하세요.</p>
-              <button type="button" onClick={handleVertexServiceAccountSubmit} disabled={isBusy || !vertexCredentials.trim()} className={primaryButtonClass}>
+              <p className="text-xs text-amber-700">
+                이 파일은 브라우저에 저장되지 않습니다. 등록 후 원본 키 파일은 프로젝트 폴더 밖에서
+                안전하게 관리하세요.
+              </p>
+              <button
+                type="button"
+                onClick={handleVertexServiceAccountSubmit}
+                disabled={isBusy || !vertexCredentials.trim()}
+                className={primaryButtonClass}
+              >
                 {activeAction === 'save-vertex' ? '등록 중…' : '서비스 계정 등록'}
               </button>
             </div>
           ) : (
             <div className="space-y-3">
-              <label htmlFor="vertexProjectId" className="block text-sm font-bold text-slate-700">Google Cloud 프로젝트 ID</label>
+              <label htmlFor="vertexProjectId" className="block text-sm font-bold text-slate-700">
+                Google Cloud 프로젝트 ID
+              </label>
               <input
                 id="vertexProjectId"
                 type="text"
                 autoComplete="off"
                 spellCheck={false}
                 value={vertexProjectId}
-                onChange={(event) => setVertexProjectId(event.target.value)}
-                onKeyDown={(event) => {
+                onChange={event => setVertexProjectId(event.target.value)}
+                onKeyDown={event => {
                   if (event.key === 'Enter') {
                     event.preventDefault();
                     handleVertexAdcSubmit();
@@ -295,8 +358,16 @@ export const AiConnectionSettings: React.FC<AiConnectionSettingsProps> = ({
                 placeholder="비워두면 서버의 GOOGLE_CLOUD_PROJECT 사용"
                 className={inputClass}
               />
-              <p className="text-xs text-slate-500">입력값을 우선 사용하며, 비워두면 서버의 GOOGLE_CLOUD_PROJECT를 사용합니다. 서버에는 ADC 또는 연결된 서비스 계정이 준비되어 있어야 합니다.</p>
-              <button type="button" onClick={handleVertexAdcSubmit} disabled={isBusy} className={primaryButtonClass}>
+              <p className="text-xs text-slate-500">
+                입력값을 우선 사용하며, 비워두면 서버의 GOOGLE_CLOUD_PROJECT를 사용합니다. 서버에는
+                ADC 또는 연결된 서비스 계정이 준비되어 있어야 합니다.
+              </p>
+              <button
+                type="button"
+                onClick={handleVertexAdcSubmit}
+                disabled={isBusy}
+                className={primaryButtonClass}
+              >
                 {activeAction === 'save-adc' ? '등록 중…' : 'ADC 설정 등록'}
               </button>
             </div>
@@ -305,7 +376,9 @@ export const AiConnectionSettings: React.FC<AiConnectionSettingsProps> = ({
           {status?.providers.vertex.configured && (
             <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-lg bg-white border border-slate-200 p-3 text-xs">
               <dt className="font-bold text-slate-500">인증 방식</dt>
-              <dd className="text-slate-700">{getAuthModeLabel(status.providers.vertex.authMode)}</dd>
+              <dd className="text-slate-700">
+                {getAuthModeLabel(status.providers.vertex.authMode)}
+              </dd>
               {status.providers.vertex.projectId && (
                 <>
                   <dt className="font-bold text-slate-500">프로젝트</dt>
@@ -327,11 +400,13 @@ export const AiConnectionSettings: React.FC<AiConnectionSettingsProps> = ({
         <button
           type="button"
           disabled={isBusy || !selectedStatus?.configured}
-          onClick={() => void runAction(
-            'test',
-            () => testAiCredential(selectedProvider, selectedModel),
-            '연결 테스트에 성공했습니다.',
-          )}
+          onClick={() =>
+            void runAction(
+              'test',
+              () => testAiCredential(selectedProvider, selectedModel),
+              '연결 테스트에 성공했습니다.',
+            )
+          }
           className={secondaryButtonClass}
         >
           {activeAction === 'test' ? '테스트 중…' : '연결 테스트'}
@@ -351,7 +426,9 @@ export const AiConnectionSettings: React.FC<AiConnectionSettingsProps> = ({
             setIsLoadingStatus(true);
             setNotice(null);
             void refreshStatus()
-              .catch((error: unknown) => setNotice({ tone: 'error', message: getErrorMessage(error) }))
+              .catch((error: unknown) =>
+                setNotice({ tone: 'error', message: getErrorMessage(error) }),
+              )
               .finally(() => setIsLoadingStatus(false));
           }}
           className={secondaryButtonClass}

@@ -1,14 +1,13 @@
-
 import { Post, GalleryData } from '../../types';
 import { PromptContext } from './context';
 
-export const EVALUATION_PROMPT_VERSION = "2.0.1";
+export const EVALUATION_PROMPT_VERSION = '2.0.1';
 
 export const buildPostEvaluationPrompt = (
-    userPost: Pick<Post, 'title' | 'author' | 'content'>,
-    _galleryContext: PromptContext
+  userPost: Pick<Post, 'title' | 'author' | 'content'>,
+  _galleryContext: PromptContext,
 ) => {
-    const prompt = `
+  const prompt = `
 // PROMPT VERSION: ${EVALUATION_PROMPT_VERSION}
 **1. INPUT DATA**
 Title: ${userPost.title}
@@ -26,14 +25,14 @@ Output valid JSON matching the Schema.
 Evaluate the User Post for Engagement Metrics based on the logic above.
     `;
 
-    return { prompt };
+  return { prompt };
 };
 
 export const buildWorldviewFeedbackPrompt = (
-    customWorldviewText: string,
-    galleryData: GalleryData
+  customWorldviewText: string,
+  galleryData: GalleryData,
 ) => {
-    const prompt = `
+  const prompt = `
 // PROMPT VERSION: ${EVALUATION_PROMPT_VERSION}
 **1. INPUT**
 - Worldview Setting: "${customWorldviewText}"
@@ -45,5 +44,5 @@ Act as a Creative Writing Coach. Provide feedback in Korean (Markdown) on:
 2. Weaknesses
 3. Expansion Ideas
     `;
-    return { prompt };
+  return { prompt };
 };

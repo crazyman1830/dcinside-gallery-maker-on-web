@@ -7,7 +7,7 @@
 - 게시글과 댓글을 스트리밍으로 생성
 - 세계관, 시대, 말투, 사용자 성향 등 세부 조건 설정
 - 사용자 글과 댓글에 대한 AI 후속 반응
-- Google Search grounding과 출처 표시
+- Google Search grounding 전용 표시 파이프라인 준비 상태 안내
 - Gemini API 및 Vertex AI 연결 선택
 - 브라우저 Local Storage를 이용한 프리셋 저장
 
@@ -28,6 +28,14 @@ npm run dev
 ```
 
 개발 서버가 출력한 로컬 주소를 브라우저에서 엽니다. 브라우저와 API 서버는 같은 origin에서 동작합니다.
+
+Windows에서는 `run.bat`으로도 실행할 수 있습니다.
+
+```bat
+run.bat
+```
+
+기본 실행은 소스와 설정의 해시를 확인해 빌드가 없거나 오래된 경우에만 다시 빌드합니다. 개발 서버를 빌드 없이 바로 시작하려면 `run.bat --dev`, Node.js와 패키지 준비 상태만 확인하려면 `run.bat --check`, 브라우저 자동 실행을 생략하려면 `run.bat --no-browser`를 사용합니다. 서버 포트는 5173부터 사용 가능한 값을 자동 선택하며, 직접 실행할 때는 `PORT` 환경 변수로 지정할 수 있습니다.
 
 서버는 `127.0.0.1`에만 바인딩됩니다. 이 구성은 개인 PC에서 실행하는 로컬 앱 전용이며, 서비스 계정 JSON 업로드 기능을 중앙 웹 서비스로 배포하는 용도로 지원하지 않습니다.
 
@@ -106,13 +114,19 @@ JSON 파일의 `project_id`와 화면 또는 환경 변수의 프로젝트가 �
 - 클라이언트 코드, `VITE_` 환경 변수, 정적 HTML에는 비밀값을 넣지 마세요.
 - 운영 환경에서는 최소 권한 서비스 계정과 플랫폼의 secret manager를 사용하세요.
 
+## Google Search grounding 데이터
+
+v0.1.0에서는 Google Search grounding을 사용할 수 없습니다. Google이 제공하는 grounded 결과와 검색 추천을 수정 없이 함께 표시하고, 검색 추천·출처 링크를 저장하거나 클릭 추적하지 않는 전용 파이프라인이 완성되기 전까지 릴리스에서 비활성화합니다. 향후 검색 기능을 활성화할 때 검색 기반 갤러리는 공식 표시 및 저장 조건에 따라 현재 브라우저 탭의 메모리에서만 유지하고 새로고침 복원 대상에서 제외합니다.
+
 ## 문제 해결
 
 - `401` 또는 `403`: ADC 로그인 상태, 서비스 계정 IAM 권한, 대상 프로젝트를 확인합니다.
 - 프로젝트를 찾을 수 없음: 화면의 프로젝트 ID 또는 `GOOGLE_CLOUD_PROJECT`를 확인합니다.
 - 모델을 찾을 수 없음: 선택한 모델이 해당 프로젝트에서 Vertex AI로 제공되는지 확인합니다.
-- 검색 기능 오류: 선택한 공급자와 모델이 Google Search grounding을 지원하는지 확인합니다.
+- 검색 기능이 비활성화됨: v0.1.0의 의도된 릴리스 정책입니다. 공식 표시·저장 조건을 충족하는 전용 파이프라인이 준비된 버전에서 활성화할 예정입니다.
 - 설정을 바꾼 뒤에도 연결되지 않음: 서버를 재시작하고 앱에서 연결 테스트를 다시 실행합니다.
+- 예전 버전의 갤러리·프리셋은 처음 읽을 때 V2 저장 형식으로 자동 마이그레이션됩니다. 손상된 항목은 가능한 데이터만 복구하고 화면에 경고를 표시합니다.
+- 저장 데이터 문제로 화면을 계속 사용할 수 없다면 브라우저 개발자 도구의 Local Storage에서 현재 사이트의 `dcgm.session.v2`와 `dcgm.presets.v2`만 삭제한 뒤 새로고침하세요. 이 작업은 저장된 갤러리와 사용자 프리셋을 제거하지만 서버 메모리의 자격증명에는 영향을 주지 않습니다.
 
 ## 개발 구조
 
@@ -123,6 +137,43 @@ JSON 파일의 `project_id`와 화면 또는 환경 변수의 프로젝트가 �
 
 주요 기술은 React 19, TypeScript, Vite, Node.js, `@google/genai`입니다.
 
+## 품질 검증
+
+로컬 변경을 제출하기 전 전체 품질 게이트를 실행합니다.
+
+```bash
+npm run verify
+```
+
+`verify`는 ESLint(React Hooks 및 JSX 접근성 포함), Prettier 형식 검사, Vitest 커버리지, 전체 TypeScript 타입 검사, 프로덕션 빌드, 번들 크기 예산, 빌드 산출물 기동 검사와 mock Playwright E2E를 순서대로 수행합니다. 브라우저를 제외한 핵심 게이트만 빠르게 확인하려면 `npm run verify:core`를, 필요하면 아래 각 단계를 따로 실행할 수 있습니다.
+
+```bash
+npm run lint
+npm run format-check
+npm run typecheck
+npm run test
+npm run test:coverage
+npm run build
+npm run smoke
+```
+
+브라우저 E2E는 외부 AI를 호출하지 않고 네트워크 응답을 mock 처리합니다. Playwright Chromium이 준비된 환경에서 다음 명령으로 실행합니다.
+
+```bash
+npm run test:e2e
+```
+
+릴리스 전 실제 모델 품질을 점검하려면 API 키를 명시적으로 설정한 뒤 선택형 live 평가를 실행합니다. 이 명령은 대표 5개 시나리오를 실제 호출하므로 요금과 할당량을 사용합니다. 키가 없으면 성공 상태로 건너뜁니다.
+
+```powershell
+$env:GEMINI_API_KEY = "your-api-key"
+npm run eval:live
+```
+
+평가는 응답 스키마, 정확히 5개 게시물, 댓글 상한, 빈 콘텐츠, 예약된 작성자 사용 여부, 시나리오별 지연 시간/p50/p95와 SDK가 보고한 토큰 사용량을 요약합니다. 별도 평가 모델이 몰입감·관련성·다양성을 각각 5점 척도로 채점하며 평균 4.0 미만은 실패로 처리합니다. `LIVE_EVAL_MODEL`과 `LIVE_EVAL_TIMEOUT_MS`로 모델과 요청 제한 시간을 바꿀 수 있습니다.
+
+이 저장소는 GitHub Actions, 예약 워크플로, Dependabot 자동 PR을 사용하지 않습니다. 품질 검증과 의존성 점검은 개발자가 로컬에서 명시적으로 실행할 때만 동작합니다. 커버리지 HTML, Playwright 보고서, 빌드 결과물은 각각 `coverage/`, `playwright-report/`, `dist/` 및 `dist-server/`에 생성되며 Git에 커밋하지 않습니다.
+
 ## 주의사항
 
 - 생성형 AI 요청에는 공급자별 요금과 할당량이 적용될 수 있습니다.
@@ -131,4 +182,4 @@ JSON 파일의 `project_id`와 화면 또는 환경 변수의 프로젝트가 �
 
 ## License
 
-MIT License
+[MIT License](./LICENSE)

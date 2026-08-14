@@ -1,0 +1,12 @@
+coverage/
+coverage-*/
+dist/
+dist-server/
+node_modules/
+playwright-report/
+test-results/
+vertex/
+credentials/
+secrets/
+.env
+.env.*

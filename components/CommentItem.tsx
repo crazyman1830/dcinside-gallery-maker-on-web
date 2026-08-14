@@ -1,68 +1,93 @@
-
 import React from 'react';
 import { Comment } from '../types';
 import { useVoting } from '../hooks/useVoting';
 import { POST_AUTHOR_PREFIX } from '../constants';
+import { formatTimestamp } from '../utils/common';
 
 interface CommentItemProps {
   comment: Comment;
   onSetReplyTo: (author: string, id: string) => void;
   isHighlighted: boolean;
-  onVoteComment?: (commentId: string, voteType: 'rec' | 'nonrec' | null, recs: number, nonRecs: number) => void;
+  onVoteComment?: (
+    commentId: string,
+    voteType: 'rec' | 'nonrec' | null,
+    recs: number,
+    nonRecs: number,
+  ) => void;
 }
 
-const CommentContentRenderer: React.FC<{ text: string }> = ({ text }) => {
-    // 1. Identify Mention at start
-    let mentionPart = null;
-    let contentBody = text;
+const CommentContentRenderer: React.FC<{ comment: Comment }> = ({ comment }) => {
+  let mention = comment.replyTo ? `@${comment.replyTo.author}` : null;
+  let contentBody = comment.text;
 
-    const mentionRegex = /^(@[\w\s.-]+)(.*)/s;
-    const mentionMatch = text.match(mentionRegex);
-    if (mentionMatch) {
-        mentionPart = <span className="font-semibold text-indigo-600 mr-1 select-none bg-indigo-50 px-1 rounded">{mentionMatch[1]}</span>;
-        contentBody = mentionMatch[2];
+  if (mention && contentBody.startsWith(`${mention} `)) {
+    contentBody = contentBody.slice(mention.length + 1);
+  } else if (!mention) {
+    // Legacy replies stored only a leading one-token mention. Deliberately
+    // keep this conservative so ordinary sentences are never swallowed.
+    const legacyMatch = contentBody.match(/^(@[^\s]+)\s+([\s\S]+)$/);
+    if (legacyMatch) {
+      mention = legacyMatch[1];
+      contentBody = legacyMatch[2];
     }
+  }
 
-    // 2. Parse DC-Cones in the remaining body
-    const conRegex = /\(콘:\s*([^\)]+)\)/g;
-    const parts = [];
-    let lastIndex = 0;
-    let match;
+  // 2. Parse DC-Cones in the remaining body
+  const conRegex = /\(콘:\s*([^)]+)\)/g;
+  const parts = [];
+  let lastIndex = 0;
+  let match;
 
-    while ((match = conRegex.exec(contentBody)) !== null) {
-         if (match.index > lastIndex) {
-            parts.push(<span key={`text-${lastIndex}`}>{contentBody.substring(lastIndex, match.index)}</span>);
-        }
-        const description = match[1].trim();
-        parts.push(
-            <span key={`con-${match.index}`} className="inline-block mx-1 px-2 py-0.5 bg-yellow-50 border border-yellow-200 rounded text-xs text-gray-500 italic align-middle select-none" title="디시콘">
-                <i className="far fa-smile mr-1"></i>{description}
-            </span>
-        );
-        lastIndex = conRegex.lastIndex;
+  while ((match = conRegex.exec(contentBody)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(
+        <span key={`text-${lastIndex}`}>{contentBody.substring(lastIndex, match.index)}</span>,
+      );
     }
-    if (lastIndex < contentBody.length) {
-        parts.push(<span key={`text-${lastIndex}`}>{contentBody.substring(lastIndex)}</span>);
-    }
-
-    return (
-        <>
-            {mentionPart}
-            {parts}
-        </>
+    const description = match[1].trim();
+    parts.push(
+      <span
+        key={`con-${match.index}`}
+        className="inline-block mx-1 px-2 py-0.5 bg-yellow-50 border border-yellow-200 rounded text-xs text-gray-500 italic align-middle select-none"
+        title="디시콘"
+      >
+        <i className="far fa-smile mr-1"></i>
+        {description}
+      </span>,
     );
+    lastIndex = conRegex.lastIndex;
+  }
+  if (lastIndex < contentBody.length) {
+    parts.push(<span key={`text-${lastIndex}`}>{contentBody.substring(lastIndex)}</span>);
+  }
+
+  return (
+    <>
+      {mention && (
+        <span className="font-semibold text-indigo-600 mr-1 select-none bg-indigo-50 px-1 rounded">
+          {mention}
+        </span>
+      )}
+      {parts}
+    </>
+  );
 };
 
-export const CommentItem: React.FC<CommentItemProps> = ({ comment, onSetReplyTo, isHighlighted, onVoteComment }) => {
+export const CommentItem: React.FC<CommentItemProps> = ({
+  comment,
+  onSetReplyTo,
+  isHighlighted,
+  onVoteComment,
+}) => {
   const { recs, nonRecs, voted, handleRecommend, handleNonRecommend } = useVoting(
     comment.recommendations,
     comment.nonRecommendations,
     comment.voted,
     (nextVoted, nextRecs, nextNonRecs) => {
-        if (onVoteComment) {
-            onVoteComment(comment.id, nextVoted, nextRecs, nextNonRecs);
-        }
-    }
+      if (onVoteComment) {
+        onVoteComment(comment.id, nextVoted, nextRecs, nextNonRecs);
+      }
+    },
   );
 
   const itemClasses = `p-4 rounded-lg shadow border transition-all duration-300 ease-in-out
@@ -79,8 +104,8 @@ export const CommentItem: React.FC<CommentItemProps> = ({ comment, onSetReplyTo,
   let authorDisplay = comment.author;
   let isPostAuthorComment = false;
   if (comment.author.startsWith(POST_AUTHOR_PREFIX)) {
-      authorDisplay = comment.author.substring(POST_AUTHOR_PREFIX.length);
-      isPostAuthorComment = true;
+    authorDisplay = comment.author.substring(POST_AUTHOR_PREFIX.length);
+    isPostAuthorComment = true;
   }
 
   return (
@@ -91,47 +116,61 @@ export const CommentItem: React.FC<CommentItemProps> = ({ comment, onSetReplyTo,
     >
       <div className="flex justify-between items-start mb-2">
         <div className="flex flex-wrap items-center gap-2">
-          <span className={`font-bold text-sm ${isPostAuthorComment ? 'text-blue-600' : 'text-slate-700'}`}>
+          <span
+            className={`font-bold text-sm ${isPostAuthorComment ? 'text-blue-600' : 'text-slate-700'}`}
+          >
             {isPostAuthorComment && <i className="fas fa-user-edit mr-1 text-xs"></i>}
             {authorDisplay}
           </span>
           <span className="text-[10px] text-slate-300">|</span>
-          <span className="text-xs text-slate-400 font-mono">{comment.timestamp}</span>
+          <time className="font-mono text-xs text-slate-600" dateTime={comment.timestamp}>
+            {formatTimestamp(comment.timestamp)}
+          </time>
         </div>
-        
+
         <div className="flex items-center gap-1">
-            <div className="flex bg-slate-50 rounded-md border border-slate-100 overflow-hidden">
-                <button
-                    onClick={(e) => { e.stopPropagation(); handleRecommend(); }}
-                    className={`px-2 py-1 text-xs flex items-center gap-1 transition-colors
-                    ${voted === 'rec' ? 'bg-red-50 text-red-600 font-bold' : 'text-slate-400 hover:text-red-500 hover:bg-white'}`}
-                    title="추천"
-                >
-                    <i className="fas fa-thumbs-up"></i> {recs > 0 && recs}
-                </button>
-                <div className="w-[1px] bg-slate-200"></div>
-                <button
-                    onClick={(e) => { e.stopPropagation(); handleNonRecommend(); }}
-                    className={`px-2 py-1 text-xs flex items-center gap-1 transition-colors
-                    ${voted === 'nonrec' ? 'bg-blue-50 text-blue-600 font-bold' : 'text-slate-400 hover:text-blue-500 hover:bg-white'}`}
-                    title="비추천"
-                >
-                    <i className="fas fa-thumbs-down"></i> {nonRecs > 0 && nonRecs}
-                </button>
-            </div>
-            
+          <div className="flex bg-slate-50 rounded-md border border-slate-100 overflow-hidden">
             <button
-                onClick={handleReplyClick}
-                className="ml-1 w-7 h-7 flex items-center justify-center rounded-md text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
-                title="답글 달기"
-                aria-label="이 댓글에 답글 달기"
+              onClick={e => {
+                e.stopPropagation();
+                handleRecommend();
+              }}
+              className={`px-2 py-1 text-xs flex items-center gap-1 transition-colors
+                    ${voted === 'rec' ? 'bg-red-50 text-red-600 font-bold' : 'text-slate-600 hover:text-red-600 hover:bg-white'}`}
+              title="추천"
+              aria-label={`댓글 추천 ${recs}개`}
+              aria-pressed={voted === 'rec'}
             >
-                <i className="fas fa-reply text-xs transform scale-x-[-1]"></i>
+              <i className="fas fa-thumbs-up"></i> {recs > 0 && recs}
             </button>
+            <div className="w-[1px] bg-slate-200"></div>
+            <button
+              onClick={e => {
+                e.stopPropagation();
+                handleNonRecommend();
+              }}
+              className={`px-2 py-1 text-xs flex items-center gap-1 transition-colors
+                    ${voted === 'nonrec' ? 'bg-blue-50 text-blue-600 font-bold' : 'text-slate-600 hover:text-blue-600 hover:bg-white'}`}
+              title="비추천"
+              aria-label={`댓글 비추천 ${nonRecs}개`}
+              aria-pressed={voted === 'nonrec'}
+            >
+              <i className="fas fa-thumbs-down"></i> {nonRecs > 0 && nonRecs}
+            </button>
+          </div>
+
+          <button
+            onClick={handleReplyClick}
+            className="ml-1 flex h-7 w-7 items-center justify-center rounded-md text-slate-600 transition-colors hover:bg-indigo-50 hover:text-indigo-700"
+            title="답글 달기"
+            aria-label="이 댓글에 답글 달기"
+          >
+            <i className="fas fa-reply text-xs transform scale-x-[-1]"></i>
+          </button>
         </div>
       </div>
       <div className="text-slate-800 text-sm leading-relaxed break-all whitespace-pre-line pl-0.5">
-        <CommentContentRenderer text={comment.text} />
+        <CommentContentRenderer comment={comment} />
       </div>
     </li>
   );

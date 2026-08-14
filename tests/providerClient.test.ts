@@ -12,11 +12,7 @@ vi.mock('@google/genai', () => ({
   },
 }));
 
-import {
-  MODEL_ALLOWLIST,
-  assertModelAllowed,
-  createProviderClient,
-} from '../server/ai/provider';
+import { MODEL_ALLOWLIST, assertModelAllowed, createProviderClient } from '../server/ai/provider';
 import { SessionCredentialStore } from '../server/sessionStore';
 
 const serviceAccount = {
@@ -54,14 +50,18 @@ describe('provider client factory', () => {
 
     createProviderClient(session.id, 'vertex', store);
 
-    expect(sdk.constructorOptions).toEqual([{
-      vertexai: true,
-      project: serviceAccount.project_id,
-      location: 'global',
-      googleAuthOptions: { credentials: { ...serviceAccount } },
-    }]);
-    expect((sdk.constructorOptions[0] as { googleAuthOptions: { credentials: unknown } })
-      .googleAuthOptions.credentials).not.toBe(serviceAccount);
+    expect(sdk.constructorOptions).toEqual([
+      {
+        vertexai: true,
+        project: serviceAccount.project_id,
+        location: 'global',
+        googleAuthOptions: { credentials: { ...serviceAccount } },
+      },
+    ]);
+    expect(
+      (sdk.constructorOptions[0] as { googleAuthOptions: { credentials: unknown } })
+        .googleAuthOptions.credentials,
+    ).not.toBe(serviceAccount);
   });
 
   it('creates a Vertex ADC client without embedding credentials', () => {
@@ -75,11 +75,13 @@ describe('provider client factory', () => {
 
     createProviderClient(session.id, 'vertex', store);
 
-    expect(sdk.constructorOptions).toEqual([{
-      vertexai: true,
-      project: 'sample-project-123',
-      location: 'global',
-    }]);
+    expect(sdk.constructorOptions).toEqual([
+      {
+        vertexai: true,
+        project: 'sample-project-123',
+        location: 'global',
+      },
+    ]);
   });
 
   it('rejects missing credentials and models outside each provider allowlist', () => {

@@ -1,6 +1,7 @@
 import express from 'express';
 import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
+import type { GoogleGenAI } from '@google/genai';
 
 const engine = vi.hoisted(() => ({
   createGallery: vi.fn(),
@@ -35,17 +36,20 @@ const galleryContext = {
 } as const;
 
 const createTestApp = (requestTimeoutMs?: number) => {
-  const client = { models: {} };
+  const client = { models: {} } as unknown as GoogleGenAI;
   const getClient = vi.fn(() => client);
   const assertModelAllowed = vi.fn();
   const app = express();
   app.use(express.json());
-  app.use('/api/ai', createGenerationRouter({
-    getSessionId: () => 'session-1',
-    getClient,
-    assertModelAllowed,
-    requestTimeoutMs,
-  }));
+  app.use(
+    '/api/ai',
+    createGenerationRouter({
+      getSessionId: () => 'session-1',
+      getClient,
+      assertModelAllowed,
+      requestTimeoutMs,
+    }),
+  );
   return { app, assertModelAllowed, client, getClient };
 };
 
@@ -81,26 +85,32 @@ describe('generation provider routing', () => {
       title: 'title',
       author: 'author',
       content: 'content',
-      timestamp: 'now',
+      timestamp: '2026-08-14T00:00:00.000Z',
       views: 0,
       recommendations: 0,
       nonRecommendations: 0,
       comments: [],
     };
     engine.createGallery.mockResolvedValueOnce({ galleryTitle: 'gallery', posts: [post] });
-    engine.createUserPost.mockResolvedValueOnce(post);
+    engine.createUserPost.mockResolvedValueOnce({ post, warnings: [] });
     engine.createFollowUpComments.mockResolvedValueOnce([]);
 
     await request(app).post('/api/ai/gallery/stream').send(galleryContext).expect(200);
-    await request(app).post('/api/ai/posts').send({
-      newPostData: { title: 'title', author: 'author', content: 'content' },
-      galleryContext,
-    }).expect(200);
-    await request(app).post('/api/ai/comments/follow-up').send({
-      targetPost: post,
-      updatedComments: [],
-      galleryContext,
-    }).expect(200);
+    await request(app)
+      .post('/api/ai/posts')
+      .send({
+        newPostData: { title: 'title', author: 'author', content: 'content' },
+        galleryContext,
+      })
+      .expect(200);
+    await request(app)
+      .post('/api/ai/comments/follow-up')
+      .send({
+        targetPost: post,
+        updatedComments: [],
+        galleryContext,
+      })
+      .expect(200);
 
     expect(assertModelAllowed).toHaveBeenCalledTimes(3);
     expect(assertModelAllowed).toHaveBeenCalledWith('vertex', 'vertex-model');
@@ -127,16 +137,11 @@ describe('generation provider routing', () => {
     );
   });
 
-  it('aborts a hung request on timeout and releases the session lock', async () => {
+  it('times out a provider that ignores abort and releases the session lock', async () => {
     const { app } = createTestApp(5);
-    engine.createWorldviewFeedback.mockImplementationOnce((...args: unknown[]) => {
-      const signal = args[4] as AbortSignal;
-      return new Promise<string>((_resolve, reject) => {
-        signal.addEventListener('abort', () => {
-          reject(new DOMException('timed out', 'AbortError'));
-        }, { once: true });
-      });
-    });
+    engine.createWorldviewFeedback.mockImplementationOnce(
+      () => new Promise<string>(() => undefined),
+    );
 
     const payload = {
       selectedProvider: 'vertex',
@@ -144,7 +149,11 @@ describe('generation provider routing', () => {
       customWorldviewText: 'worldview',
       galleryData: { galleryTitle: 'test', posts: [] },
     };
-    await request(app).post('/api/ai/worldview-feedback').send(payload).expect(499);
+    const timedOut = await request(app)
+      .post('/api/ai/worldview-feedback')
+      .send(payload)
+      .expect(504);
+    expect(timedOut.body).toMatchObject({ code: 'AI_TIMEOUT', retryable: true });
 
     engine.createWorldviewFeedback.mockResolvedValueOnce('after timeout');
     await request(app)

@@ -4,9 +4,8 @@ import { SESSION_TTL_MS, sessionCredentialStore } from './sessionStore';
 
 const HOST = '127.0.0.1';
 const parsedPort = Number(process.env.PORT ?? 5173);
-const PORT = Number.isInteger(parsedPort) && parsedPort > 0 && parsedPort <= 65_535
-  ? parsedPort
-  : 5173;
+const PORT =
+  Number.isInteger(parsedPort) && parsedPort > 0 && parsedPort <= 65_535 ? parsedPort : 5173;
 
 const mode = process.argv.includes('--production') ? 'production' : 'development';
 const app = await createApp({ mode });

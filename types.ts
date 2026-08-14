@@ -1,4 +1,3 @@
-
 // --- Domain Types ---
 // These types define the data structures used within the application's state.
 
@@ -10,10 +9,17 @@ export interface Comment {
   recommendations: number;
   nonRecommendations: number;
   voted?: 'rec' | 'nonrec' | null;
+  /** Stable reply metadata. Legacy comments may omit this field. */
+  replyTo?: ReplyTarget;
+}
+
+export interface ReplyTarget {
+  commentId: string;
+  author: string;
 }
 
 export interface Post {
-  id: string; 
+  id: string;
   title: string;
   author: string;
   timestamp: string;
@@ -21,21 +27,44 @@ export interface Post {
   views: number;
   recommendations: number;
   nonRecommendations: number;
-  comments: Comment[]; 
-  isBestPost?: boolean; 
+  comments: Comment[];
+  isBestPost?: boolean;
   voted?: 'rec' | 'nonrec' | null;
 }
 
 export interface GroundingSource {
-    title?: string;
-    uri?: string;
+  title?: string;
+  uri?: string;
+}
+
+/**
+ * Provider-owned Google Search Suggestions markup. This is transient response
+ * metadata and must never be persisted or sent back to an AI provider.
+ */
+export interface GroundingSearchEntryPoint {
+  renderedContent: string;
+}
+
+export type GenerationWarningStage = 'evaluation' | 'comments' | 'grounding' | 'storage';
+
+export interface GenerationWarning {
+  code: string;
+  message: string;
+  stage?: GenerationWarningStage;
+  postId?: string;
 }
 
 export interface GalleryData {
   galleryTitle: string;
-  posts: Post[]; 
-  sources?: GroundingSource[]; // Added for Google Search Grounding
+  posts: Post[];
+  /** Transient Google Search grounding links; never persist or reuse as AI input. */
+  sources?: GroundingSource[];
+  /** Transient provider markup; never persist or reuse as AI input. */
+  searchEntryPoint?: GroundingSearchEntryPoint;
+  warnings?: GenerationWarning[];
 }
+
+export type PersistedGalleryData = Omit<GalleryData, 'sources' | 'searchEntryPoint'>;
 
 export type UserNicknameType = 'FIXED' | 'ANONYMOUS';
 
@@ -64,12 +93,12 @@ export interface GeminiPostContent {
   title: string;
   author: string;
   content: string;
-  comments?: GeminiCommentContent[]; 
+  comments?: GeminiCommentContent[];
 }
 
 export interface GeminiResponseData {
   galleryTitle: string;
-  posts: GeminiPostContent[]; 
+  posts: GeminiPostContent[];
 }
 
 export interface GeminiEvaluationResponse {
@@ -77,7 +106,6 @@ export interface GeminiEvaluationResponse {
   suggestedRecommendations: number;
   suggestedNonRecommendations: number;
 }
-
 
 // --- Form & Preset Types ---
 export interface GalleryFormSettings {
@@ -94,8 +122,6 @@ export interface GalleryFormSettings {
   manualMalePercentage: number;
   isManualAgeRange: boolean;
   manualSelectedAgeGroups: string[]; // Use array for serialization
-  isQualityUpgradeUnlocked: boolean;
-  isQualityUpgradeEnabled: boolean;
   isSearchEnabled: boolean;
   /** Optional for presets created before provider selection was introduced. */
   selectedProvider?: AiProvider;
@@ -106,10 +132,16 @@ export interface GalleryFormSettings {
   userReputation: number;
 }
 
+export type PresetContentSettings = Omit<
+  GalleryFormSettings,
+  'isSearchEnabled' | 'selectedProvider' | 'selectedModel'
+>;
+
 export interface Preset {
   id: string;
   name: string;
-  settings: GalleryFormSettings;
+  /** Scenario/profile only. Provider, model, search, and credentials are session settings. */
+  settings: PresetContentSettings;
 }
 
 export interface CreateGalleryParams {
@@ -136,4 +168,47 @@ export interface NewPostData {
   title: string;
   author: string;
   content: string;
+}
+
+// --- Persisted session & application state ---
+
+export interface GallerySessionV2 {
+  version: 2;
+  revision: number;
+  savedAt: string;
+  gallery: PersistedGalleryData;
+  context: GalleryContextParams;
+  profile: UserProfile | null;
+}
+
+export type AppView = 'setup' | 'gallery-list' | 'post';
+
+export type AsyncJobKind = 'gallery' | 'post' | 'follow-up' | 'feedback' | 'credential-test';
+
+export interface AsyncJob {
+  kind: AsyncJobKind;
+  requestId: string;
+  sessionRevision: number;
+  startedAt: string;
+  abortController: AbortController;
+}
+
+export interface ApiErrorResponse {
+  error: string;
+  code: string;
+  field?: string;
+  retryable: boolean;
+  requestId: string;
+}
+
+export type GalleryStreamEvent =
+  | { type: 'phase'; phase: string; message?: string; progress?: number }
+  | { type: 'chunk'; text: string }
+  | { type: 'warning'; warning: GenerationWarning }
+  | { type: 'result'; data: GalleryData }
+  | { type: 'error'; message: string; code?: string; retryable?: boolean; requestId?: string };
+
+export interface AddUserPostResponse {
+  post: Post;
+  warnings: GenerationWarning[];
 }

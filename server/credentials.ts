@@ -1,8 +1,8 @@
 import type { ServiceAccountCredential } from './sessionStore';
+import { createPrivateKey } from 'node:crypto';
 
-const isRecord = (value: unknown): value is Record<string, unknown> => (
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-);
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const requiredString = (value: Record<string, unknown>, key: string): string => {
   const field = value[key];
@@ -10,6 +10,17 @@ const requiredString = (value: Record<string, unknown>, key: string): string => 
     throw new Error('서비스 계정 JSON의 필수 필드가 올바르지 않습니다.');
   }
   return field;
+};
+
+export const validateGoogleProjectId = (projectId: string): string => {
+  const restrictedStrings = ['google', 'ssl', 'null', 'undefined'];
+  if (
+    !/^[a-z][a-z0-9-]{4,28}[a-z0-9]$/.test(projectId) ||
+    restrictedStrings.some(restricted => projectId.includes(restricted))
+  ) {
+    throw new Error('Google Cloud 프로젝트 ID가 올바르지 않습니다.');
+  }
+  return projectId;
 };
 
 export const parseServiceAccountCredential = (input: unknown): ServiceAccountCredential => {
@@ -29,11 +40,16 @@ export const parseServiceAccountCredential = (input: unknown): ServiceAccountCre
   const clientEmail = requiredString(parsed, 'client_email');
   const privateKey = requiredString(parsed, 'private_key');
   const tokenUri = requiredString(parsed, 'token_uri');
-  if (!/^[a-z][a-z0-9-]{4,62}$/i.test(projectId)
-    || !clientEmail.includes('@')
-    || !privateKey.includes('BEGIN PRIVATE KEY')
-    || !privateKey.includes('END PRIVATE KEY')) {
+  validateGoogleProjectId(projectId);
+  if (clientEmail.length > 254 || !/^[^\s@]+@[^\s@]+$/.test(clientEmail)) {
     throw new Error('서비스 계정 JSON의 필수 필드가 올바르지 않습니다.');
+  }
+  try {
+    const key = createPrivateKey({ key: privateKey, format: 'pem' });
+    if (key.type !== 'private' || key.asymmetricKeyType !== 'rsa')
+      throw new Error('Not an RSA key.');
+  } catch {
+    throw new Error('서비스 계정 JSON의 비공개 키가 올바르지 않습니다.');
   }
   let tokenUrl: URL;
   try {
@@ -41,7 +57,16 @@ export const parseServiceAccountCredential = (input: unknown): ServiceAccountCre
   } catch {
     throw new Error('서비스 계정 JSON의 필수 필드가 올바르지 않습니다.');
   }
-  if (tokenUrl.protocol !== 'https:' || tokenUrl.hostname !== 'oauth2.googleapis.com') {
+  if (
+    tokenUrl.protocol !== 'https:' ||
+    tokenUrl.hostname !== 'oauth2.googleapis.com' ||
+    tokenUrl.port ||
+    tokenUrl.username ||
+    tokenUrl.password ||
+    tokenUrl.pathname !== '/token' ||
+    tokenUrl.search ||
+    tokenUrl.hash
+  ) {
     throw new Error('서비스 계정 JSON의 토큰 주소가 허용되지 않습니다.');
   }
 
@@ -52,6 +77,6 @@ export const parseServiceAccountCredential = (input: unknown): ServiceAccountCre
     project_id: projectId,
     client_email: clientEmail,
     private_key: privateKey,
-    token_uri: tokenUrl.toString(),
+    token_uri: 'https://oauth2.googleapis.com/token',
   };
 };

@@ -21,13 +21,11 @@ type JsonRecord = Record<string, unknown>;
 
 const CREDENTIALS_ENDPOINT = '/api/ai/credentials';
 
-const isRecord = (value: unknown): value is JsonRecord => (
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-);
+const isRecord = (value: unknown): value is JsonRecord =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
 
-const getOptionalString = (record: JsonRecord, key: string): string | undefined => (
-  typeof record[key] === 'string' && record[key] ? record[key] : undefined
-);
+const getOptionalString = (record: JsonRecord, key: string): string | undefined =>
+  typeof record[key] === 'string' && record[key] ? record[key] : undefined;
 
 const normalizeStatus = (value: unknown): AiCredentialStatus => {
   const root = isRecord(value) ? value : {};
@@ -35,9 +33,8 @@ const normalizeStatus = (value: unknown): AiCredentialStatus => {
   const gemini = isRecord(providers.gemini) ? providers.gemini : {};
   const vertex = isRecord(providers.vertex) ? providers.vertex : {};
   const rawAuthMode = getOptionalString(vertex, 'authMode');
-  const authMode: VertexAuthMode | undefined = (
-    rawAuthMode === 'service_account' || rawAuthMode === 'adc'
-  ) ? rawAuthMode : undefined;
+  const authMode: VertexAuthMode | undefined =
+    rawAuthMode === 'service_account' || rawAuthMode === 'adc' ? rawAuthMode : undefined;
 
   return {
     providers: {
@@ -65,7 +62,7 @@ const request = async (path: string, init?: RequestInit): Promise<unknown> => {
   if (!response.ok) {
     let message = `자격증명 요청에 실패했습니다. (HTTP ${response.status})`;
     try {
-      const payload = await response.json() as { error?: unknown };
+      const payload = (await response.json()) as { error?: unknown };
       if (typeof payload.error === 'string' && payload.error) message = payload.error;
     } catch {
       // Keep the status-only fallback for non-JSON responses.
@@ -79,9 +76,8 @@ const request = async (path: string, init?: RequestInit): Promise<unknown> => {
   return contentType.includes('application/json') ? response.json() : undefined;
 };
 
-export const getAiCredentialStatus = async (): Promise<AiCredentialStatus> => (
-  normalizeStatus(await request(CREDENTIALS_ENDPOINT))
-);
+export const getAiCredentialStatus = async (): Promise<AiCredentialStatus> =>
+  normalizeStatus(await request(CREDENTIALS_ENDPOINT));
 
 export const registerGeminiCredential = async (apiKey: string): Promise<void> => {
   await request(`${CREDENTIALS_ENDPOINT}/gemini`, {
@@ -119,10 +115,7 @@ export const deleteAiCredential = async (provider: AiProvider): Promise<void> =>
   await request(`${CREDENTIALS_ENDPOINT}/${provider}`, { method: 'DELETE' });
 };
 
-export const testAiCredential = async (
-  provider: AiProvider,
-  model?: string,
-): Promise<void> => {
+export const testAiCredential = async (provider: AiProvider, model?: string): Promise<void> => {
   await request(`${CREDENTIALS_ENDPOINT}/${provider}/test`, {
     method: 'POST',
     body: JSON.stringify(model ? { model } : {}),

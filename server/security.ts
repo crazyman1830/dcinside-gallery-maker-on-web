@@ -2,9 +2,8 @@ import type { NextFunction, Request, Response } from 'express';
 
 const LOOPBACK_HOST = /^(?:localhost|127\.0\.0\.1|\[::1\])(?::\d{1,5})?$/i;
 
-export const isLoopbackHost = (host: string | undefined): boolean => (
-  typeof host === 'string' && LOOPBACK_HOST.test(host)
-);
+export const isLoopbackHost = (host: string | undefined): boolean =>
+  typeof host === 'string' && LOOPBACK_HOST.test(host);
 
 export const loopbackRequestGuard = (
   request: Request,
@@ -21,9 +20,9 @@ export const loopbackRequestGuard = (
       const parsed = new URL(origin);
       const requestHost = request.headers.host?.toLowerCase();
       if (
-        parsed.protocol !== 'http:'
-        || !isLoopbackHost(parsed.host)
-        || parsed.host.toLowerCase() !== requestHost
+        parsed.protocol !== 'http:' ||
+        !isLoopbackHost(parsed.host) ||
+        parsed.host.toLowerCase() !== requestHost
       ) {
         response.status(403).json({ error: '로컬 출처 요청만 허용됩니다.' });
         return;
@@ -36,21 +35,32 @@ export const loopbackRequestGuard = (
   next();
 };
 
-export const securityHeaders = (
-  _request: Request,
-  response: Response,
-  next: NextFunction,
-): void => {
-  response.setHeader('Cache-Control', 'no-store');
-  response.setHeader('X-Content-Type-Options', 'nosniff');
-  response.setHeader('Referrer-Policy', 'no-referrer');
-  response.setHeader('X-Frame-Options', 'DENY');
-  response.setHeader(
-    'Content-Security-Policy',
-    "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self'",
-  );
-  next();
-};
+export const createSecurityHeaders =
+  (development = false) =>
+  (_request: Request, response: Response, next: NextFunction): void => {
+    response.setHeader('Cache-Control', 'no-store');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    response.setHeader('Referrer-Policy', 'no-referrer');
+    response.setHeader('X-Frame-Options', 'DENY');
+    response.setHeader(
+      'Content-Security-Policy',
+      [
+        "default-src 'self'",
+        "base-uri 'none'",
+        "object-src 'none'",
+        "frame-ancestors 'none'",
+        "form-action 'self'",
+        `script-src 'self'${development ? " 'unsafe-inline'" : ''}`,
+        "style-src 'self' 'unsafe-inline'",
+        "font-src 'self' data:",
+        "img-src 'self' data:",
+        `connect-src 'self'${development ? ' ws:' : ''}`,
+      ].join('; '),
+    );
+    next();
+  };
+
+export const securityHeaders = createSecurityHeaders();
 
 const SENSITIVE_PATH = /^\/(?:vertex|credentials|secrets)(?:\/|$)/i;
 

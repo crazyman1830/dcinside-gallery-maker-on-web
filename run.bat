@@ -66,12 +66,11 @@ if /i "%~1"=="--check" (
     exit /b 0
 )
 
-set "NEED_BUILD=0"
-if not exist "dist\index.html" set "NEED_BUILD=1"
-if not exist "dist-server\index.js" set "NEED_BUILD=1"
+if /i "%~1"=="--dev" goto START_SERVER
 
-if "%NEED_BUILD%"=="1" (
-    echo [준비] 실행 파일을 처음 빌드합니다. 잠시 기다려 주세요.
+call node scripts\build-state.mjs --check >nul 2>&1
+if errorlevel 1 (
+    echo [준비] 소스 변경 사항을 반영해 실행 파일을 빌드합니다. 잠시 기다려 주세요.
     call npm run build
     if errorlevel 1 (
         echo.
@@ -82,6 +81,7 @@ if "%NEED_BUILD%"=="1" (
     )
 )
 
+:START_SERVER
 set "PORT="
 for /f "delims=" %%P in ('powershell.exe -NoProfile -Command "$p=5173; while (Get-NetTCPConnection -State Listen -LocalPort $p -ErrorAction SilentlyContinue) { $p++ }; $p"') do if not defined PORT set "PORT=%%P"
 if not defined PORT set "PORT=5173"

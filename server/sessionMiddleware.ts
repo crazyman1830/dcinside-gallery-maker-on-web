@@ -23,21 +23,21 @@ const parseCookie = (header: string | undefined, name: string): string | undefin
   return undefined;
 };
 
-export const createSessionMiddleware = (
-  store: SessionCredentialStore = sessionCredentialStore,
-) => (request: Request, response: Response, next: NextFunction): void => {
-  const requestedId = parseCookie(request.headers.cookie, SESSION_COOKIE);
-  const session = store.getOrCreate(requestedId);
-  response.locals.sessionId = session.id;
-  response.cookie(SESSION_COOKIE, session.id, {
-    httpOnly: true,
-    sameSite: 'strict',
-    secure: false,
-    path: '/',
-    maxAge: SESSION_TTL_MS,
-  });
-  next();
-};
+export const createSessionMiddleware =
+  (store: SessionCredentialStore = sessionCredentialStore) =>
+  (request: Request, response: Response, next: NextFunction): void => {
+    const requestedId = parseCookie(request.headers.cookie, SESSION_COOKIE);
+    const session = store.getOrCreate(requestedId);
+    response.locals.sessionId = session.id;
+    response.cookie(SESSION_COOKIE, session.id, {
+      httpOnly: true,
+      sameSite: 'strict',
+      secure: false,
+      path: '/api/ai',
+      maxAge: SESSION_TTL_MS,
+    });
+    next();
+  };
 
 export const getSessionId = (request: Request): string => {
   const sessionId = request.res?.locals.sessionId;

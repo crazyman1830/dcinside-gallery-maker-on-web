@@ -34,6 +34,15 @@
     "utils/**/*.ts",
     "utils/**/*.tsx"
   ],
-  "exclude": ["server", "tests", "dist", "dist-server", "node_modules", "vite.config.ts"],
+  "exclude": [
+    "server",
+    "tests",
+    "dist",
+    "dist-server",
+    "node_modules",
+    "playwright.config.ts",
+    "vite.config.ts",
+    "vitest.config.ts"
+  ],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

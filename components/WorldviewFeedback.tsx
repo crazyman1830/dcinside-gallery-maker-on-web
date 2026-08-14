@@ -8,7 +8,12 @@ interface WorldviewFeedbackProps {
   isVisible: boolean;
 }
 
-export const WorldviewFeedback: React.FC<WorldviewFeedbackProps> = ({ isFetching, feedback, onFetchFeedback, isVisible }) => {
+export const WorldviewFeedback: React.FC<WorldviewFeedbackProps> = ({
+  isFetching,
+  feedback,
+  onFetchFeedback,
+  isVisible,
+}) => {
   if (!isVisible) {
     return null;
   }
@@ -29,7 +34,8 @@ export const WorldviewFeedback: React.FC<WorldviewFeedbackProps> = ({ isFetching
       ) : (
         <div>
           <p className="text-gray-600 mb-4">
-            생성된 갤러리 내용을 바탕으로 AI가 사용자의 '직접 입력' 세계관 설정을 더 풍부하고 일관성 있게 만들 수 있도록 피드백을 제공합니다.
+            생성된 갤러리 내용을 바탕으로 AI가 사용자의 '직접 입력' 세계관 설정을 더 풍부하고 일관성
+            있게 만들 수 있도록 피드백을 제공합니다.
           </p>
           <button
             onClick={onFetchFeedback}

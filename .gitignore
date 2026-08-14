@@ -8,6 +8,9 @@ dist/
 dist-server/
 build/
 coverage/
+coverage-*/
+playwright-report/
+test-results/
 .vite/
 *.tsbuildinfo
 

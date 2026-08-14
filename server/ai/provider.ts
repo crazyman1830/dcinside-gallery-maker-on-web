@@ -5,10 +5,7 @@ import {
   DEFAULT_MODEL_BY_PROVIDER,
   EVALUATION_MODEL_BY_PROVIDER,
 } from '../../constants';
-import {
-  sessionCredentialStore,
-  type SessionCredentialStore,
-} from '../sessionStore';
+import { sessionCredentialStore, type SessionCredentialStore } from '../sessionStore';
 
 export const MODEL_ALLOWLIST: Record<AiProvider, readonly string[]> = {
   gemini: AI_MODELS.gemini.map(model => model.value),
@@ -23,7 +20,8 @@ export const assertModelAllowed = (provider: AiProvider, model: string): void =>
   }
 };
 
-export const getDefaultModel = (provider: AiProvider): string => DEFAULT_MODEL_BY_PROVIDER[provider];
+export const getDefaultModel = (provider: AiProvider): string =>
+  DEFAULT_MODEL_BY_PROVIDER[provider];
 
 export const createProviderClient = (
   sessionId: string,

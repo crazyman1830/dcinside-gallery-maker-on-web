@@ -1,5 +1,3 @@
-
-
 export const getMediaFormattingRules = () => `
 **MEDIA FORMATTING RULES:**
 - You cannot generate actual images. Instead, write vivid descriptions inside the text.

@@ -1,39 +1,39 @@
-
 import { PromptContext } from './context';
 import { getMediaFormattingRules, getSafetyRules, getImmersionRules } from './rules';
 import {
-    generateWorldviewSpecificInstructions,
-    generateToxicitySpecificInstructions,
-    generateUserProfileInstructions,
-    getNicknameInstructionDetails,
-    generatePlayerStatusInstructions
+  generateWorldviewSpecificInstructions,
+  generateToxicitySpecificInstructions,
+  generateUserProfileInstructions,
+  getNicknameInstructionDetails,
+  generatePlayerStatusInstructions,
 } from './instructions';
 
-export const SYSTEM_INSTRUCTION_VERSION = "2.3.0";
+export const SYSTEM_INSTRUCTION_VERSION = '2.3.0';
 
-export const buildSystemInstruction = (
-    topic: string,
-    galleryContext: PromptContext
-) => {
-    const { worldviewSpecificInstructions } = generateWorldviewSpecificInstructions(
-        galleryContext.worldviewValue, 
-        galleryContext.customWorldviewText, 
-        galleryContext.worldviewEraValue
-    );
-    const { toxicitySpecificInstructions } = generateToxicitySpecificInstructions(galleryContext.toxicityLevelValue);
-    const userProfileInstructions = generateUserProfileInstructions(
-        galleryContext.userSpecies, 
-        galleryContext.userAffiliation, 
-        galleryContext.genderRatioValue, 
-        galleryContext.ageRangeValue
-    );
-    const nicknameInstructionDetails = getNicknameInstructionDetails(galleryContext.anonymousNickRatioValue);
-    const playerStatusInstructions = generatePlayerStatusInstructions(galleryContext.userProfile);
-    const mediaRules = getMediaFormattingRules();
-    const immersionRules = getImmersionRules();
-    const safetyRules = getSafetyRules();
+export const buildSystemInstruction = (topic: string, galleryContext: PromptContext) => {
+  const { worldviewSpecificInstructions } = generateWorldviewSpecificInstructions(
+    galleryContext.worldviewValue,
+    galleryContext.customWorldviewText,
+    galleryContext.worldviewEraValue,
+  );
+  const { toxicitySpecificInstructions } = generateToxicitySpecificInstructions(
+    galleryContext.toxicityLevelValue,
+  );
+  const userProfileInstructions = generateUserProfileInstructions(
+    galleryContext.userSpecies,
+    galleryContext.userAffiliation,
+    galleryContext.genderRatioValue,
+    galleryContext.ageRangeValue,
+  );
+  const nicknameInstructionDetails = getNicknameInstructionDetails(
+    galleryContext.anonymousNickRatioValue,
+  );
+  const playerStatusInstructions = generatePlayerStatusInstructions(galleryContext.userProfile);
+  const mediaRules = getMediaFormattingRules();
+  const immersionRules = getImmersionRules();
+  const safetyRules = getSafetyRules();
 
-    return `
+  return `
 // SYSTEM INSTRUCTION VERSION: ${SYSTEM_INSTRUCTION_VERSION}
 Role: "Gallery Engine", a simulation AI for Korean internet community content (DC Inside style).
 Topic: "${topic}"

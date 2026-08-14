@@ -2,6 +2,17 @@ import { randomUUID } from 'node:crypto';
 import type { AiProvider, VertexAuthMode } from '../types';
 
 export const SESSION_TTL_MS = 8 * 60 * 60 * 1_000;
+export const DEFAULT_MAX_SESSIONS = 128;
+
+export class SessionCapacityError extends Error {
+  readonly status = 503;
+  readonly code = 'SESSION_CAPACITY';
+
+  constructor() {
+    super('로컬 세션 수용량을 초과했습니다. 잠시 후 다시 시도해 주세요.');
+    this.name = 'SessionCapacityError';
+  }
+}
 
 export interface ServiceAccountCredential {
   type: 'service_account';
@@ -49,9 +60,15 @@ export class SessionCredentialStore {
   constructor(
     private readonly now: () => number = Date.now,
     private readonly ttlMs: number = SESSION_TTL_MS,
-  ) {}
+    private readonly maxEntries: number = DEFAULT_MAX_SESSIONS,
+  ) {
+    if (!Number.isInteger(maxEntries) || maxEntries < 1) {
+      throw new RangeError('maxEntries must be a positive integer.');
+    }
+  }
 
   create(): SessionCredentials {
+    this.ensureCapacity();
     const session: SessionCredentials = {
       id: randomUUID(),
       lastAccess: this.now(),
@@ -130,6 +147,21 @@ export class SessionCredentialStore {
     const session = this.get(sessionId);
     if (!session) throw new Error('로컬 세션이 만료되었습니다. 페이지를 새로고침해 주세요.');
     return session;
+  }
+
+  private ensureCapacity(): void {
+    this.cleanupExpired();
+    if (this.sessions.size < this.maxEntries) return;
+
+    let evictionCandidate: SessionCredentials | undefined;
+    for (const session of this.sessions.values()) {
+      if (session.gemini || session.vertex) continue;
+      if (!evictionCandidate || session.lastAccess < evictionCandidate.lastAccess) {
+        evictionCandidate = session;
+      }
+    }
+    if (!evictionCandidate) throw new SessionCapacityError();
+    this.sessions.delete(evictionCandidate.id);
   }
 }
 

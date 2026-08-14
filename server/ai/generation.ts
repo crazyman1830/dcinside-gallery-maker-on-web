@@ -1,9 +1,4 @@
-import {
-  type GenerateContentResponse,
-  type GoogleGenAI,
-  type Schema,
-  Type,
-} from '@google/genai';
+import { type GenerateContentResponse, type GoogleGenAI, type Schema, Type } from '@google/genai';
 import type {
   Comment,
   GalleryData,
@@ -28,6 +23,22 @@ import {
 } from '../../utils/jsonParser';
 
 const MAX_RETRIES = 2;
+const MAX_FORMAT_REPAIRS = 1;
+export const MAX_GALLERY_OUTPUT_TOKENS = 8_192;
+export const MAX_COMMENT_OUTPUT_TOKENS = 4_096;
+export const MAX_EVALUATION_OUTPUT_TOKENS = 256;
+export const MAX_FEEDBACK_OUTPUT_TOKENS = 1_024;
+
+export class MalformedAiResponseError extends Error {
+  readonly status = 502;
+  readonly code = 'MALFORMED_AI_RESPONSE';
+  readonly retryable = true;
+
+  constructor(readonly cause: unknown) {
+    super('AI가 올바른 데이터 형식으로 응답하지 않았습니다.');
+    this.name = 'MalformedAiResponseError';
+  }
+}
 
 type ErrorWithStatus = Error & {
   status?: number;
@@ -50,18 +61,111 @@ export const isRetryableProviderError = (error: unknown): boolean => {
   return status === 429 || (status !== undefined && status >= 500 && status <= 599);
 };
 
-export const withProviderRetry = async <T>(operation: () => Promise<T>): Promise<T> => {
+interface ProviderRetryOptions {
+  signal?: AbortSignal;
+  onRetry?: (attempt: number, delayMs: number, error: unknown) => void;
+}
+
+const throwIfAborted = (signal?: AbortSignal): void => {
+  if (signal?.aborted)
+    throw signal.reason ?? new DOMException('The request was aborted.', 'AbortError');
+};
+
+const retryAfterMilliseconds = (error: unknown): number | undefined => {
+  const candidate = error as {
+    retryAfter?: unknown;
+    response?: { headers?: { get?: (name: string) => string | null } };
+  };
+  const raw = candidate?.retryAfter ?? candidate?.response?.headers?.get?.('retry-after');
+  if (typeof raw === 'number' && Number.isFinite(raw)) return Math.max(0, raw * 1_000);
+  if (typeof raw === 'string' && /^\d+(?:\.\d+)?$/.test(raw.trim())) {
+    return Math.max(0, Number(raw) * 1_000);
+  }
+  return undefined;
+};
+
+const abortableDelay = (delayMs: number, signal?: AbortSignal): Promise<void> => {
+  throwIfAborted(signal);
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, delayMs);
+    timer.unref?.();
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal?.reason ?? new DOMException('The request was aborted.', 'AbortError'));
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+};
+
+export const withProviderRetry = async <T>(
+  operation: () => Promise<T>,
+  { signal, onRetry }: ProviderRetryOptions = {},
+): Promise<T> => {
   let lastError: unknown;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
+    throwIfAborted(signal);
     try {
       return await operation();
     } catch (error) {
       lastError = error;
       if (!isRetryableProviderError(error) || attempt === MAX_RETRIES) throw error;
-      await new Promise(resolve => setTimeout(resolve, 1_000 * (2 ** attempt)));
+      throwIfAborted(signal);
+      const exponentialCap = 1_000 * 2 ** attempt;
+      const providerDelay = retryAfterMilliseconds(error);
+      const delayMs = Math.min(10_000, providerDelay ?? Math.floor(Math.random() * exponentialCap));
+      onRetry?.(attempt + 1, delayMs, error);
+      await abortableDelay(delayMs, signal);
     }
   }
   throw lastError;
+};
+
+const withFormatRepair = async <T>(
+  operation: (repair: boolean) => Promise<string>,
+  parse: (text: string) => T,
+  signal?: AbortSignal,
+): Promise<T> => {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= MAX_FORMAT_REPAIRS; attempt += 1) {
+    throwIfAborted(signal);
+    const text = await operation(attempt > 0);
+    try {
+      return parse(text);
+    } catch (error) {
+      throwIfAborted(signal);
+      lastError = error;
+      if (attempt === MAX_FORMAT_REPAIRS) break;
+    }
+  }
+  throw new MalformedAiResponseError(lastError);
+};
+
+export const repairGalleryGeneration = async (
+  ai: GoogleGenAI,
+  context: PromptContext,
+  model: string,
+  signal?: AbortSignal,
+): Promise<string> => {
+  const { prompt } = buildGalleryGenerationPrompt(context);
+  const response = await withProviderRetry(
+    () =>
+      ai.models.generateContent({
+        model,
+        contents: `${prompt}\n\nFORMAT REPAIR: The previous response was malformed. Return valid JSON only. Do not include prose or Markdown fences.`,
+        config: {
+          systemInstruction: buildSystemInstruction(context.topic, context),
+          responseMimeType: 'application/json',
+          responseSchema: galleryResponseSchema,
+          maxOutputTokens: MAX_GALLERY_OUTPUT_TOKENS,
+          abortSignal: signal,
+        },
+      }),
+    { signal },
+  );
+  return response.text ?? '';
 };
 
 const commentSchema: Schema = {
@@ -102,11 +206,7 @@ const evaluationSchema: Schema = {
     suggestedRecommendations: { type: Type.INTEGER },
     suggestedNonRecommendations: { type: Type.INTEGER },
   },
-  required: [
-    'suggestedViews',
-    'suggestedRecommendations',
-    'suggestedNonRecommendations',
-  ],
+  required: ['suggestedViews', 'suggestedRecommendations', 'suggestedNonRecommendations'],
 };
 
 const commentArraySchema: Schema = {
@@ -117,6 +217,10 @@ const commentArraySchema: Schema = {
 export interface GalleryStreamChunk {
   text: string;
   sources: Array<{ title?: string; uri?: string }>;
+  /** Whether this chunk proves that Google Search grounding ran. */
+  hasSearchMetadata: boolean;
+  /** Unmodified provider markup; validated by the gallery engine. */
+  searchEntryPointRenderedContent?: unknown;
 }
 
 export const streamGalleryGeneration = async (
@@ -139,20 +243,64 @@ export const streamGalleryGeneration = async (
         abortSignal: signal,
       };
 
-  const providerStream = await withProviderRetry(() => ai.models.generateContentStream({
-    model,
-    contents: prompt,
-    config,
-  }));
-
   async function* normalize(): AsyncGenerator<GalleryStreamChunk, void, unknown> {
-    for await (const chunk of providerStream) {
-      const sources = (chunk.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [])
-        .flatMap(groundingChunk => groundingChunk.web ? [{
-          title: groundingChunk.web.title,
-          uri: groundingChunk.web.uri,
-        }] : []);
-      yield { text: chunk.text ?? '', sources };
+    // Retry is safe only before the first provider chunk is exposed. Once data
+    // has been streamed to the caller, replaying would duplicate content.
+    const { iterator, first } = await withProviderRetry(
+      async () => {
+        const providerStream = await ai.models.generateContentStream({
+          model,
+          contents: prompt,
+          config: { ...config, maxOutputTokens: MAX_GALLERY_OUTPUT_TOKENS },
+        });
+        const streamIterator = providerStream[Symbol.asyncIterator]();
+        const firstChunk = await streamIterator.next();
+        return { iterator: streamIterator, first: firstChunk };
+      },
+      { signal },
+    );
+
+    let next = first;
+    while (!next.done) {
+      const chunk = next.value;
+      const groundingMetadata = chunk.candidates?.[0]?.groundingMetadata;
+      const rawGroundingChunks = groundingMetadata?.groundingChunks;
+      const groundingChunks: unknown[] = Array.isArray(rawGroundingChunks)
+        ? rawGroundingChunks
+        : [];
+      const sources = groundingChunks.flatMap(groundingChunk => {
+        const web = (groundingChunk as { web?: unknown } | null)?.web;
+        if (web === undefined) return [];
+        const candidate = web as { title?: unknown; uri?: unknown };
+        return [
+          {
+            ...(typeof candidate?.title === 'string' ? { title: candidate.title } : {}),
+            ...(typeof candidate?.uri === 'string' ? { uri: candidate.uri } : {}),
+          },
+        ];
+      });
+      const rawMetadata = groundingMetadata as
+        | {
+            searchEntryPoint?: unknown;
+            webSearchQueries?: unknown;
+          }
+        | undefined;
+      const searchEntryPoint = rawMetadata?.searchEntryPoint as
+        { renderedContent?: unknown } | undefined;
+      const hasWebGroundingChunk = groundingChunks.some(
+        groundingChunk => (groundingChunk as { web?: unknown } | null)?.web !== undefined,
+      );
+      const hasWebSearchQueries = rawMetadata?.webSearchQueries !== undefined;
+      const hasSearchEntryPoint = rawMetadata?.searchEntryPoint !== undefined;
+      yield {
+        text: chunk.text ?? '',
+        sources,
+        hasSearchMetadata: hasWebGroundingChunk || hasWebSearchQueries || hasSearchEntryPoint,
+        ...(hasSearchEntryPoint
+          ? { searchEntryPointRenderedContent: searchEntryPoint?.renderedContent }
+          : {}),
+      };
+      next = await iterator.next();
     }
   }
 
@@ -167,26 +315,42 @@ export const generateComments = async (
   maxComments: number,
   model: string,
   signal?: AbortSignal,
-): Promise<GeminiCommentContent[]> => withProviderRetry(async () => {
+): Promise<GeminiCommentContent[]> => {
   const { prompt, numberOfCommentsToGenerate } = buildCommentGenerationPrompt(
     post,
     context,
     minComments,
     maxComments,
   );
-  const response: GenerateContentResponse = await ai.models.generateContent({
-    model,
-    contents: prompt,
-    config: {
-      responseMimeType: 'application/json',
-      responseSchema: commentArraySchema,
-      systemInstruction: buildSystemInstruction(context.topic, context),
-      abortSignal: signal,
+  return withFormatRepair(
+    async repair => {
+      const response: GenerateContentResponse = await withProviderRetry(
+        () =>
+          ai.models.generateContent({
+            model,
+            contents: repair
+              ? `${prompt}\n\nFORMAT REPAIR: Return valid JSON only. Do not include prose or Markdown fences.`
+              : prompt,
+            config: {
+              responseMimeType: 'application/json',
+              responseSchema: commentArraySchema,
+              systemInstruction: buildSystemInstruction(context.topic, context),
+              maxOutputTokens: MAX_COMMENT_OUTPUT_TOKENS,
+              abortSignal: signal,
+            },
+          }),
+        { signal },
+      );
+      return response.text ?? '';
     },
-  });
-  return parseGeminiCommentArrayResponse(response.text ?? '')
-    .slice(0, Math.min(numberOfCommentsToGenerate, maxComments));
-});
+    text =>
+      parseGeminiCommentArrayResponse(text).slice(
+        0,
+        Math.min(numberOfCommentsToGenerate, maxComments),
+      ),
+    signal,
+  );
+};
 
 export const generateFollowUpComments = async (
   ai: GoogleGenAI,
@@ -197,7 +361,7 @@ export const generateFollowUpComments = async (
   maxComments: number,
   model: string,
   signal?: AbortSignal,
-): Promise<GeminiCommentContent[]> => withProviderRetry(async () => {
+): Promise<GeminiCommentContent[]> => {
   const { prompt, numberOfCommentsToGenerate } = buildFollowUpCommentPrompt(
     post,
     existingComments,
@@ -205,19 +369,35 @@ export const generateFollowUpComments = async (
     minComments,
     maxComments,
   );
-  const response: GenerateContentResponse = await ai.models.generateContent({
-    model,
-    contents: prompt,
-    config: {
-      responseMimeType: 'application/json',
-      responseSchema: commentArraySchema,
-      systemInstruction: buildSystemInstruction(context.topic, context),
-      abortSignal: signal,
+  return withFormatRepair(
+    async repair => {
+      const response: GenerateContentResponse = await withProviderRetry(
+        () =>
+          ai.models.generateContent({
+            model,
+            contents: repair
+              ? `${prompt}\n\nFORMAT REPAIR: Return valid JSON only. Do not include prose or Markdown fences.`
+              : prompt,
+            config: {
+              responseMimeType: 'application/json',
+              responseSchema: commentArraySchema,
+              systemInstruction: buildSystemInstruction(context.topic, context),
+              maxOutputTokens: MAX_COMMENT_OUTPUT_TOKENS,
+              abortSignal: signal,
+            },
+          }),
+        { signal },
+      );
+      return response.text ?? '';
     },
-  });
-  return parseGeminiCommentArrayResponse(response.text ?? '')
-    .slice(0, Math.min(numberOfCommentsToGenerate, maxComments));
-});
+    text =>
+      parseGeminiCommentArrayResponse(text).slice(
+        0,
+        Math.min(numberOfCommentsToGenerate, maxComments),
+      ),
+    signal,
+  );
+};
 
 export const evaluatePost = async (
   ai: GoogleGenAI,
@@ -225,20 +405,33 @@ export const evaluatePost = async (
   context: PromptContext,
   model: string,
   signal?: AbortSignal,
-): Promise<GeminiEvaluationResponse> => withProviderRetry(async () => {
+): Promise<GeminiEvaluationResponse> => {
   const { prompt } = buildPostEvaluationPrompt(post, context);
-  const response: GenerateContentResponse = await ai.models.generateContent({
-    model,
-    contents: prompt,
-    config: {
-      responseMimeType: 'application/json',
-      responseSchema: evaluationSchema,
-      systemInstruction: buildSystemInstruction(context.topic, context),
-      abortSignal: signal,
+  return withFormatRepair(
+    async repair => {
+      const response: GenerateContentResponse = await withProviderRetry(
+        () =>
+          ai.models.generateContent({
+            model,
+            contents: repair
+              ? `${prompt}\n\nFORMAT REPAIR: Return valid JSON only. Do not include prose or Markdown fences.`
+              : prompt,
+            config: {
+              responseMimeType: 'application/json',
+              responseSchema: evaluationSchema,
+              systemInstruction: buildSystemInstruction(context.topic, context),
+              maxOutputTokens: MAX_EVALUATION_OUTPUT_TOKENS,
+              abortSignal: signal,
+            },
+          }),
+        { signal },
+      );
+      return response.text ?? '';
     },
-  });
-  return parseGeminiEvaluationResponse(response.text ?? '');
-});
+    parseGeminiEvaluationResponse,
+    signal,
+  );
+};
 
 export const generateFeedback = async (
   ai: GoogleGenAI,
@@ -246,12 +439,16 @@ export const generateFeedback = async (
   galleryData: GalleryData,
   model: string,
   signal?: AbortSignal,
-): Promise<string> => withProviderRetry(async () => {
-  const { prompt } = buildWorldviewFeedbackPrompt(customWorldviewText, galleryData);
-  const response = await ai.models.generateContent({
-    model,
-    contents: prompt,
-    config: { abortSignal: signal },
-  });
-  return response.text || '피드백을 생성할 수 없습니다.';
-});
+): Promise<string> =>
+  withProviderRetry(
+    async () => {
+      const { prompt } = buildWorldviewFeedbackPrompt(customWorldviewText, galleryData);
+      const response = await ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: { abortSignal: signal, maxOutputTokens: MAX_FEEDBACK_OUTPUT_TOKENS },
+      });
+      return response.text || '피드백을 생성할 수 없습니다.';
+    },
+    { signal },
+  );

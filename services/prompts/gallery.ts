@@ -1,43 +1,39 @@
-
 import { PromptContext } from './context';
 import {
-    generateWorldviewSpecificInstructions,
-    generateToxicitySpecificInstructions,
+  generateWorldviewSpecificInstructions,
+  generateToxicitySpecificInstructions,
 } from './instructions';
-import {
-    NUMBER_OF_POSTS,
-} from '../../constants';
+import { NUMBER_OF_POSTS } from '../../constants';
 import { resolveUserNickname } from '../../utils/common';
 
-export const GALLERY_PROMPT_VERSION = "2.0.4";
+export const GALLERY_PROMPT_VERSION = '2.0.4';
 
-export const buildGalleryGenerationPrompt = (
-    ctx: PromptContext
-) => {
-    const { eraLabelForTitlePrompt, worldviewLabelKoreanPart, eraConstraints } = generateWorldviewSpecificInstructions(
-        ctx.worldviewValue, 
-        ctx.customWorldviewText, 
-        ctx.worldviewEraValue
+export const buildGalleryGenerationPrompt = (ctx: PromptContext) => {
+  const { eraLabelForTitlePrompt, worldviewLabelKoreanPart, eraConstraints } =
+    generateWorldviewSpecificInstructions(
+      ctx.worldviewValue,
+      ctx.customWorldviewText,
+      ctx.worldviewEraValue,
     );
-    const { selectedToxicity } = generateToxicitySpecificInstructions(ctx.toxicityLevelValue);
-    const toxicityNameForTitle = selectedToxicity.nameForTitle;
-    
-    const currentUserNick = resolveUserNickname(ctx.userProfile ?? null);
-    const userIp = ctx.userProfile?.nicknameType === 'ANONYMOUS' ? ctx.userProfile.ip : null;
-    const authorBanInstruction = `- **AUTHOR BAN (CRITICAL):** You MUST NEVER use "나" or "(글쓴이)" as an author name.${currentUserNick ? ` You MUST ALSO NEVER use exactly "${currentUserNick}" (which is the Active User).` : ''}${userIp ? ` If generating anonymous users, their IP addresses MUST NEVER contain "${userIp}".` : ''} Generate completely separate fictional identities for all posts and comments.`;
+  const { selectedToxicity } = generateToxicitySpecificInstructions(ctx.toxicityLevelValue);
+  const toxicityNameForTitle = selectedToxicity.nameForTitle;
 
-    let googleSearchInstruction = "";
-    let jsonFormattingInstruction = "";
+  const currentUserNick = resolveUserNickname(ctx.userProfile ?? null);
+  const userIp = ctx.userProfile?.nicknameType === 'ANONYMOUS' ? ctx.userProfile.ip : null;
+  const authorBanInstruction = `- **AUTHOR BAN (CRITICAL):** You MUST NEVER use "나" or "(글쓴이)" as an author name.${currentUserNick ? ` You MUST ALSO NEVER use exactly "${currentUserNick}" (which is the Active User).` : ''}${userIp ? ` If generating anonymous users, their IP addresses MUST NEVER contain "${userIp}".` : ''} Generate completely separate fictional identities for all posts and comments.`;
 
-    if (ctx.useSearch) {
-        googleSearchInstruction = `
+  let googleSearchInstruction = '';
+  let jsonFormattingInstruction = '';
+
+  if (ctx.useSearch) {
+    googleSearchInstruction = `
 [TOOL USE & EXCLUSIVE SEARCH FOCUS (CRITICAL)]
 - Use Google Search to find REAL trending news/memes about "${ctx.topic}" and "${ctx.discussionContext || ''}".
 - **CRITICAL DIRECTIVE:** Because search is enabled, you MUST construct all posts and comments **EXCLUSIVELY** based on the real-time facts, events, and data retrieved from the search results. 
 - Do NOT mix in your outdated prior knowledge or hallucinate past events. If you retrieved information about recent trends, the characters in the gallery MUST only talk about those recent trends, to prevent sync issues. Let the search results completely dictate the narrative.
         `;
 
-        jsonFormattingInstruction = `
+    jsonFormattingInstruction = `
 **JSON OUTPUT SPECIFICATION (STRICT)**
 Output ONLY a single valid JSON object.
 Structure:
@@ -52,19 +48,19 @@ Structure:
   ]
 }
         `;
-    }
+  }
 
-    let explicitTechBanInstruction = "";
-    if (eraConstraints) {
-        explicitTechBanInstruction = `
+  let explicitTechBanInstruction = '';
+  if (eraConstraints) {
+    explicitTechBanInstruction = `
 **ERA COMPLIANCE & VOCABULARY FILTER (STRICT)**
 - **Constraints:** ${eraConstraints}
 - **Action:** Scan all generated titles and content. If a term violates the constraints (e.g., using "Truck" in Medieval), REPLACE it with a context-appropriate term (e.g., "Wagon").
 - **Directive:** Do not explain the replacement in the text, just use the correct era-specific term.
         `;
-    }
+  }
 
-    const prompt = `
+  const prompt = `
 // PROMPT VERSION: ${GALLERY_PROMPT_VERSION}
 **1. CONTEXT & SETTINGS**
 - **Topic:** "${ctx.topic}"
@@ -93,5 +89,5 @@ Generate the initial page of the "${ctx.topic}" Gallery based on the above setti
 Ensure the output is verbose, authentic, and strictly adheres to the requested format.
   `;
 
-    return { prompt };
+  return { prompt };
 };

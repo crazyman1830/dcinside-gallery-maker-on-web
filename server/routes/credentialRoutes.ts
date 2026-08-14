@@ -1,40 +1,48 @@
 import { Router, type Request } from 'express';
+import { z } from 'zod';
 import type { AiProvider } from '../../types';
-import { parseServiceAccountCredential } from '../credentials';
+import { parseServiceAccountCredential, validateGoogleProjectId } from '../credentials';
 import {
   assertModelAllowed,
   createProviderClient,
+  EVALUATION_MODEL,
   getDefaultModel,
 } from '../ai/provider';
-import {
-  sessionCredentialStore,
-  type SessionCredentialStore,
-} from '../sessionStore';
+import { sessionCredentialStore, type SessionCredentialStore } from '../sessionStore';
 import { getSessionId } from '../sessionMiddleware';
 import { withProviderRetry } from '../ai/generation';
-import { publicError } from './generationRoutes';
+import { aiAdmissionLimiter, type AiAdmissionLimiter } from '../ai/admission';
+import {
+  AiTimeoutError,
+  ClientAbortError,
+  raceWithAbort,
+  sendPublicError,
+  zodValidationError,
+} from '../http';
 
 const CONNECTION_TEST_TIMEOUT_MS = 30_000;
 
 interface CredentialRouterOptions {
   store?: SessionCredentialStore;
   sessionId?: (request: Request) => string;
+  limiter?: Pick<AiAdmissionLimiter, 'run'>;
+  connectionTestTimeoutMs?: number;
 }
 
-const isProvider = (value: string): value is AiProvider => (
-  value === 'gemini' || value === 'vertex'
-);
+const isProvider = (value: string): value is AiProvider => value === 'gemini' || value === 'vertex';
 
-const validateProjectId = (projectId: string): string => {
-  if (!/^[a-z][a-z0-9-]{4,62}$/.test(projectId)) {
-    throw new Error('Google Cloud 프로젝트 ID가 올바르지 않습니다.');
-  }
-  return projectId;
-};
+const geminiCredentialSchema = z.object({ apiKey: z.string().trim().min(1).max(16_384) }).strict();
+const serviceAccountSchema = z.object({ credentials: z.unknown() }).strict();
+const adcSchema = z.object({ projectId: z.string().trim().max(30).optional() }).strict();
+const credentialTestSchema = z
+  .object({ model: z.string().trim().min(1).max(100).optional() })
+  .strict();
 
 export const createCredentialRouter = ({
   store = sessionCredentialStore,
   sessionId = getSessionId,
+  limiter = aiAdmissionLimiter,
+  connectionTestTimeoutMs = CONNECTION_TEST_TIMEOUT_MS,
 }: CredentialRouterOptions = {}): Router => {
   const router = Router();
 
@@ -44,53 +52,76 @@ export const createCredentialRouter = ({
 
   router.post('/gemini', (request, response) => {
     try {
-      const apiKey = typeof request.body?.apiKey === 'string' ? request.body.apiKey.trim() : '';
-      if (!apiKey || apiKey.length > 16_384) throw new Error('Gemini API 키가 올바르지 않습니다.');
-      store.setGemini(sessionId(request), apiKey);
-      response.status(201).json(store.status(sessionId(request)));
+      const parsed = geminiCredentialSchema.safeParse(request.body);
+      if (!parsed.success) throw zodValidationError(parsed.error);
+      const id = sessionId(request);
+      store.setGemini(id, parsed.data.apiKey);
+      response.status(201).json(store.status(id));
     } catch (error) {
-      const safe = publicError(error);
-      response.status(safe.status).json({ error: safe.status === 500 ? '자격증명을 등록할 수 없습니다.' : safe.message });
+      sendPublicError(response, error);
     }
   });
 
   router.post('/vertex/service-account', (request, response) => {
     try {
-      const credentials = parseServiceAccountCredential(request.body?.credentials);
-      store.setVertex(sessionId(request), {
+      const parsed = serviceAccountSchema.safeParse(request.body);
+      if (!parsed.success) throw zodValidationError(parsed.error);
+      const credentials = parseServiceAccountCredential(parsed.data.credentials);
+      const id = sessionId(request);
+      store.setVertex(id, {
         authMode: 'service_account',
         projectId: credentials.project_id,
         location: 'global',
         credentials,
       });
-      response.status(201).json(store.status(sessionId(request)));
-    } catch {
-      response.status(400).json({ error: '서비스 계정 JSON이 올바르지 않습니다.' });
+      response.status(201).json(store.status(id));
+    } catch (error) {
+      sendPublicError(
+        response,
+        Object.assign(new Error('서비스 계정 JSON이 올바르지 않습니다.'), {
+          status: 400,
+          code: 'INVALID_SERVICE_ACCOUNT',
+        }),
+      );
     }
   });
 
   router.post('/vertex/adc', (request, response) => {
     try {
-      const requestedProject = typeof request.body?.projectId === 'string'
-        ? request.body.projectId.trim()
-        : '';
-      const projectId = validateProjectId(requestedProject || process.env.GOOGLE_CLOUD_PROJECT || '');
-      store.setVertex(sessionId(request), {
+      const parsed = adcSchema.safeParse(request.body);
+      if (!parsed.success) throw zodValidationError(parsed.error);
+      const projectId = validateGoogleProjectId(
+        parsed.data.projectId || process.env.GOOGLE_CLOUD_PROJECT || '',
+      );
+      const id = sessionId(request);
+      store.setVertex(id, {
         authMode: 'adc',
         projectId,
         location: 'global',
       });
-      response.status(201).json(store.status(sessionId(request)));
-    } catch {
-      response.status(400).json({
-        error: '프로젝트 ID를 입력하거나 GOOGLE_CLOUD_PROJECT 환경 변수를 설정해 주세요.',
-      });
+      response.status(201).json(store.status(id));
+    } catch (error) {
+      sendPublicError(
+        response,
+        Object.assign(
+          new Error(
+            '프로젝트 ID를 입력하거나 올바른 GOOGLE_CLOUD_PROJECT 환경 변수를 설정해 주세요.',
+          ),
+          { status: 400, code: 'INVALID_PROJECT_ID' },
+        ),
+      );
     }
   });
 
   router.delete('/:provider', (request, response) => {
     if (!isProvider(request.params.provider)) {
-      response.status(404).json({ error: '지원하지 않는 AI 공급자입니다.' });
+      sendPublicError(
+        response,
+        Object.assign(new Error('지원하지 않는 AI 공급자입니다.'), {
+          status: 404,
+          code: 'AI_PROVIDER_NOT_FOUND',
+        }),
+      );
       return;
     }
     store.deleteProvider(sessionId(request), request.params.provider);
@@ -100,25 +131,57 @@ export const createCredentialRouter = ({
   router.post('/:provider/test', async (request, response) => {
     const provider = request.params.provider;
     if (!isProvider(provider)) {
-      response.status(404).json({ error: '지원하지 않는 AI 공급자입니다.' });
+      sendPublicError(
+        response,
+        Object.assign(new Error('지원하지 않는 AI 공급자입니다.'), {
+          status: 404,
+          code: 'AI_PROVIDER_NOT_FOUND',
+        }),
+      );
       return;
     }
     try {
-      const model = typeof request.body?.model === 'string'
-        ? request.body.model
-        : getDefaultModel(provider);
+      const parsed = credentialTestSchema.safeParse(request.body);
+      if (!parsed.success) throw zodValidationError(parsed.error);
+      const model = parsed.data.model ?? getDefaultModel(provider);
       assertModelAllowed(provider, model);
-      const client = createProviderClient(sessionId(request), provider, store);
-      const abortSignal = AbortSignal.timeout(CONNECTION_TEST_TIMEOUT_MS);
-      await withProviderRetry(() => client.models.generateContent({
-        model,
-        contents: 'Reply with exactly OK.',
-        config: { maxOutputTokens: 8, abortSignal },
-      }));
+      const id = sessionId(request);
+      await limiter.run(id, async () => {
+        const client = createProviderClient(id, provider, store);
+        const controller = new AbortController();
+        const abortForClient = () => controller.abort(new ClientAbortError());
+        request.once('aborted', abortForClient);
+        response.once('close', abortForClient);
+        const timeout = setTimeout(
+          () => controller.abort(new AiTimeoutError()),
+          connectionTestTimeoutMs,
+        );
+        timeout.unref();
+        try {
+          const models = [...new Set([model, EVALUATION_MODEL[provider]])];
+          for (const candidate of models) {
+            await raceWithAbort(
+              withProviderRetry(
+                () =>
+                  client.models.generateContent({
+                    model: candidate,
+                    contents: 'Reply with exactly OK.',
+                    config: { maxOutputTokens: 8, abortSignal: controller.signal },
+                  }),
+                { signal: controller.signal },
+              ),
+              controller.signal,
+            );
+          }
+        } finally {
+          clearTimeout(timeout);
+          request.off('aborted', abortForClient);
+          response.off('close', abortForClient);
+        }
+      });
       response.json({ ok: true });
     } catch (error) {
-      const safe = publicError(error);
-      response.status(safe.status).json({ error: safe.message });
+      sendPublicError(response, error);
     }
   });
 
