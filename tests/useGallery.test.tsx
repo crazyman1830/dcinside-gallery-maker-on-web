@@ -7,6 +7,7 @@ import type {
   Comment,
   CreateGalleryParams,
   GalleryData,
+  GalleryContextParams,
   GenerationWarning,
   Post,
   UserProfile,
@@ -37,7 +38,7 @@ const profile: UserProfile = {
   reputation: 50,
 };
 
-const context: CreateGalleryParams = {
+const requestContext: CreateGalleryParams = {
   topic: 'topic',
   discussionContext: '',
   worldviewValue: 'CUSTOM',
@@ -53,6 +54,11 @@ const context: CreateGalleryParams = {
   selectedModel: 'gemini-2.5-flash',
   useSearch: false,
   userProfile: profile,
+};
+
+const context: GalleryContextParams = {
+  ...requestContext,
+  worldlineId: 'WL-1111-2222-3333',
 };
 
 const makeComment = (id: string, overrides: Partial<Comment> = {}): Comment => ({
@@ -98,7 +104,7 @@ type UIHook = ReturnType<typeof useUIState>;
 
 interface StorageHarness {
   galleryData: GalleryData | null;
-  galleryContext: CreateGalleryParams | null;
+  galleryContext: GalleryContextParams | null;
   currentUserProfile: UserProfile | null;
   revision: number;
   storageWarning: string | null;
@@ -166,7 +172,7 @@ beforeEach(() => {
       storage.galleryData = typeof value === 'function' ? value(storage.galleryData) : value;
     }),
     replaceSession: vi.fn(
-      (data: GalleryData, nextContext: CreateGalleryParams, nextProfile: UserProfile) => {
+      (data: GalleryData, nextContext: GalleryContextParams, nextProfile: UserProfile) => {
         storage.galleryData = data;
         storage.galleryContext = nextContext;
         storage.currentUserProfile = nextProfile;
@@ -251,6 +257,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
@@ -275,9 +282,12 @@ describe('useGallery gallery generation', () => {
 
     let request = Promise.resolve(false);
     act(() => {
-      request = result.current.createGallery({ ...context, userProfile: profile });
+      request = result.current.createGallery({ ...requestContext, userProfile: profile });
     });
 
+    const streamedRequest = vi.mocked(galleryService.createGalleryStreamed).mock.calls[0]?.[0];
+    expect(streamedRequest).toEqual({ ...requestContext, userProfile: profile });
+    expect(streamedRequest).not.toHaveProperty('worldlineId');
     expect(storage.galleryData).toBe(previousGallery);
     expect(storage.replaceSession).not.toHaveBeenCalled();
     expect(ui.streamingText).toBe('partial payload');
@@ -289,9 +299,14 @@ describe('useGallery gallery generation', () => {
 
     expect(storage.replaceSession).toHaveBeenCalledWith(
       nextGallery,
-      expect.objectContaining(context),
+      expect.objectContaining({
+        ...requestContext,
+        worldlineId: expect.stringMatching(/^WL-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$/),
+      }),
       profile,
     );
+    const storedContext = storage.replaceSession.mock.calls[0]?.[1] as GalleryContextParams;
+    expect(storedContext.worldlineId).not.toBe(context.worldlineId);
     expect(storage.galleryData).toBe(nextGallery);
     expect(ui.setWarningMessage).toHaveBeenCalledWith(expect.stringContaining(warning.message));
     expect(ui.setIsLoading).toHaveBeenLastCalledWith(false);
@@ -306,13 +321,31 @@ describe('useGallery gallery generation', () => {
 
     await act(async () => {
       await expect(
-        result.current.createGallery({ ...context, userProfile: profile }),
+        result.current.createGallery({ ...requestContext, userProfile: profile }),
       ).resolves.toBe(false);
     });
 
     expect(storage.galleryData).toBe(previousGallery);
     expect(storage.replaceSession).not.toHaveBeenCalled();
     expect(ui.setError).toHaveBeenCalledWith(expect.stringContaining('generation failed'));
+  });
+
+  it('reports a worldline generator failure without replacing the previous session', async () => {
+    const previousGallery = storage.galleryData;
+    vi.stubGlobal('crypto', undefined);
+    const { result } = renderGalleryHook();
+
+    await act(async () => {
+      await expect(
+        result.current.createGallery({ ...requestContext, userProfile: profile }),
+      ).resolves.toBe(false);
+    });
+
+    expect(galleryService.createGalleryStreamed).not.toHaveBeenCalled();
+    expect(storage.galleryData).toBe(previousGallery);
+    expect(storage.replaceSession).not.toHaveBeenCalled();
+    expect(ui.setError).toHaveBeenCalled();
+    expect(ui.setIsLoading).toHaveBeenLastCalledWith(false);
   });
 
   it('cancels an active generation without deleting the previous session', async () => {
@@ -329,7 +362,7 @@ describe('useGallery gallery generation', () => {
     );
     const { result } = renderGalleryHook();
 
-    const request = result.current.createGallery({ ...context, userProfile: profile });
+    const request = result.current.createGallery({ ...requestContext, userProfile: profile });
     act(() => result.current.cancelGeneration());
     await act(async () => expect(request).resolves.toBe(false));
 
@@ -461,6 +494,14 @@ describe('useGallery feedback and local actions', () => {
     expect(result.current.selectedPost?.id).toBe('post-1');
     await act(async () => result.current.fetchWorldviewFeedback());
     expect(ui.setWorldviewFeedback).toHaveBeenCalledWith('useful feedback');
+    expect(galleryService.getWorldviewFeedback).toHaveBeenNthCalledWith(
+      1,
+      context.customWorldviewText,
+      storage.galleryData,
+      context.selectedModel,
+      context.selectedProvider,
+      expect.any(AbortSignal),
+    );
 
     await act(async () => result.current.fetchWorldviewFeedback());
     expect(ui.setError).toHaveBeenCalledWith(expect.stringContaining('feedback failed'));

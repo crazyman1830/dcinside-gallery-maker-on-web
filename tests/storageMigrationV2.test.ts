@@ -9,6 +9,7 @@ import {
 } from '../hooks/useGalleryStorage';
 import type { GallerySessionV2 } from '../types';
 import { formatTimestamp, migrateTimestamp, timestampToEpoch } from '../utils/common';
+import { WORLDLINE_ID_PATTERN } from '../utils/worldline';
 
 class MemoryStorage implements Storage {
   private values = new Map<string, string>();
@@ -94,6 +95,7 @@ describe('GallerySessionV2 migration', () => {
     expect(timestampToEpoch(restored.galleryData?.posts[0]?.timestamp ?? '')).toBeGreaterThan(0);
     expect(restored.galleryContext?.selectedProvider).toBe('gemini');
     expect(restored.galleryContext?.selectedModel).toBe('gemini-3.5-flash');
+    expect(restored.galleryContext?.worldlineId).toMatch(WORLDLINE_ID_PATTERN);
     expect(storage.getItem(SESSION_STORAGE_KEY)).not.toBeNull();
     for (const key of LEGACY_SESSION_KEYS) expect(storage.getItem(key)).toBeNull();
   });
@@ -173,6 +175,13 @@ describe('GallerySessionV2 migration', () => {
         selectedModel: 'gemini-2.5-pro',
       }),
     ).toMatchObject({ selectedProvider: 'vertex', selectedModel: expect.any(String) });
+
+    expect(
+      migrateGalleryContext({ ...legacyContext, worldlineId: 'WL-AAAA-BBBB-CCCC' })?.worldlineId,
+    ).toBe('WL-AAAA-BBBB-CCCC');
+    expect(
+      migrateGalleryContext({ ...legacyContext, worldlineId: 'invalid-worldline' })?.worldlineId,
+    ).toMatch(WORLDLINE_ID_PATTERN);
   });
 
   it('migrates a V2-shaped session and defaults invalid metadata', () => {

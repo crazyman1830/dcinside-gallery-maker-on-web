@@ -6,10 +6,12 @@ import type {
   AddUserPostResponse,
   Comment,
   CreateGalleryParams,
+  FollowUpPostContext,
   GalleryData,
   GenerationWarning,
   NewPostData,
   Post,
+  WorldviewFeedbackGallerySample,
 } from '../types';
 
 interface StreamCallbacks {
@@ -32,15 +34,16 @@ type CreateUserPost = (
 ) => Promise<AddUserPostResponse>;
 type CreateFollowUp = (
   client: GoogleGenAI,
-  post: Post,
+  post: FollowUpPostContext,
   comments: Comment[],
+  totalCommentCount: number,
   context: CreateGalleryParams,
   signal?: AbortSignal,
 ) => Promise<Comment[]>;
 type CreateFeedback = (
   client: GoogleGenAI,
   worldview: string,
-  gallery: GalleryData,
+  gallery: WorldviewFeedbackGallerySample,
   model: string,
   signal?: AbortSignal,
 ) => Promise<string>;
@@ -94,6 +97,45 @@ const post: Post = {
   nonRecommendations: 0,
   comments: [],
 };
+
+const recentComment: Comment = {
+  id: 'comment-1',
+  author: 'commenter',
+  text: 'comment',
+  timestamp: '2026-08-14T00:00:00.000Z',
+  recommendations: 0,
+  nonRecommendations: 0,
+};
+
+const initialGallery: GalleryData = {
+  galleryTitle: 'gallery',
+  posts: Array.from({ length: 5 }, (_, index) => ({
+    ...post,
+    id: `post-${index + 1}`,
+    title: `title-${index + 1}`,
+  })),
+};
+
+const followUpRequest = (context: CreateGalleryParams = galleryContext) => ({
+  targetPost: {
+    id: post.id,
+    title: post.title,
+    author: post.author,
+    content: post.content,
+  },
+  recentComments: [recentComment],
+  totalCommentCount: 1,
+  galleryContext: context,
+});
+
+const feedbackRequest = (selectedModel: string) => ({
+  selectedModel,
+  customWorldviewText: 'worldview',
+  gallerySample: {
+    galleryTitle: 'gallery',
+    posts: [{ title: post.title, content: post.content, comments: [] }],
+  },
+});
 
 interface FixtureOptions {
   timeoutMs?: number;
@@ -160,7 +202,7 @@ const parseEvents = (text: string): Array<Record<string, unknown>> =>
 
 describe('generation route lifecycle', () => {
   beforeEach(() => {
-    engine.createGallery.mockReset().mockResolvedValue({ galleryTitle: 'gallery', posts: [] });
+    engine.createGallery.mockReset().mockResolvedValue(initialGallery);
     engine.createUserPost.mockReset().mockResolvedValue({ post, warnings: [] });
     engine.createFollowUpComments.mockReset().mockResolvedValue([]);
     engine.createWorldviewFeedback.mockReset().mockResolvedValue('feedback');
@@ -190,7 +232,7 @@ describe('generation route lifecycle', () => {
       .expect(response => expect(response.body).toMatchObject(expectedError));
     await request(app)
       .post('/api/ai/comments/follow-up')
-      .send({ targetPost: post, updatedComments: [], galleryContext: searchContext })
+      .send(followUpRequest(searchContext))
       .expect(400)
       .expect(response => expect(response.body).toMatchObject(expectedError));
 
@@ -213,7 +255,7 @@ describe('generation route lifecycle', () => {
       await callbacks.onPhase('gallery', 'starting');
       await callbacks.onChunk('{"galleryTitle":');
       await callbacks.onWarning?.(warning);
-      return { galleryTitle: 'gallery', posts: [], warnings: [warning] };
+      return { ...initialGallery, warnings: [warning] };
     });
     const { app, limiterRun } = makeFixture({ forceBackpressure: true });
 
@@ -238,8 +280,9 @@ describe('generation route lifecycle', () => {
     engine.createGallery.mockImplementationOnce(async (_client, _params, callbacks) => {
       await callbacks.onPhase('posts', 'enriching');
       throw Object.assign(new Error('provider details'), {
-        status: 503,
-        code: 'AI_PROVIDER_DOWN',
+        status: 429,
+        code: 'AI_RATE_LIMITED',
+        retryAfterSeconds: 7,
       });
     });
     const { app } = makeFixture();
@@ -251,9 +294,10 @@ describe('generation route lifecycle', () => {
     const events = parseEvents(response.text);
     expect(events.map(event => event.type)).toEqual(['phase', 'error']);
     expect(events[1]).toMatchObject({
-      code: 'AI_PROVIDER_DOWN',
+      code: 'AI_RATE_LIMITED',
       retryable: true,
       requestId: response.headers['x-request-id'],
+      retryAfterSeconds: 7,
     });
   });
 
@@ -391,11 +435,7 @@ describe('generation route lifecycle', () => {
 
     await request(app)
       .post('/api/ai/worldview-feedback')
-      .send({
-        selectedModel: 'gemini-model',
-        customWorldviewText: 'worldview',
-        galleryData: { galleryTitle: 'gallery', posts: [] },
-      })
+      .send(feedbackRequest('gemini-model'))
       .expect(504)
       .expect(response => {
         expect(response.body.code).toBe('AI_TIMEOUT');
@@ -426,7 +466,7 @@ describe('generation route lifecycle', () => {
     );
     await request(app)
       .post('/api/ai/comments/follow-up')
-      .send({ targetPost: post, updatedComments: [], galleryContext })
+      .send(followUpRequest())
       .expect(403)
       .expect(response => {
         expect(response.body.code).toBe('AI_FORBIDDEN');
@@ -436,10 +476,8 @@ describe('generation route lifecycle', () => {
     await request(app)
       .post('/api/ai/worldview-feedback')
       .send({
+        ...feedbackRequest('vertex-model'),
         selectedProvider: 'vertex',
-        selectedModel: 'vertex-model',
-        customWorldviewText: 'worldview',
-        galleryData: { galleryTitle: 'gallery', posts: [] },
       })
       .expect(500)
       .expect(response => {
@@ -447,15 +485,56 @@ describe('generation route lifecycle', () => {
       });
   });
 
+  it('rejects invalid engine output before committing successful response contracts', async () => {
+    engine.createGallery.mockResolvedValueOnce({ galleryTitle: 'gallery', posts: [post] });
+    const galleryFixture = makeFixture();
+    const galleryResponse = await request(galleryFixture.app)
+      .post('/api/ai/gallery/stream')
+      .send(galleryContext)
+      .expect(200);
+    expect(parseEvents(galleryResponse.text)).toEqual([
+      expect.objectContaining({ type: 'error', code: 'INVALID_API_RESPONSE', retryable: false }),
+    ]);
+
+    engine.createUserPost.mockResolvedValueOnce({
+      post: { ...post, views: -1 },
+      warnings: [],
+    });
+    const postFixture = makeFixture();
+    await request(postFixture.app)
+      .post('/api/ai/posts')
+      .send({
+        newPostData: { title: 'title', author: 'author', content: 'content' },
+        galleryContext,
+      })
+      .expect(502)
+      .expect(response => {
+        expect(response.body).toMatchObject({
+          code: 'INVALID_API_RESPONSE',
+          retryable: false,
+        });
+      });
+
+    engine.createFollowUpComments.mockResolvedValueOnce([{ ...recentComment, text: '' }]);
+    const commentsFixture = makeFixture();
+    await request(commentsFixture.app)
+      .post('/api/ai/comments/follow-up')
+      .send(followUpRequest())
+      .expect(502);
+
+    engine.createWorldviewFeedback.mockResolvedValueOnce(42 as never);
+    const feedbackFixture = makeFixture();
+    await request(feedbackFixture.app)
+      .post('/api/ai/worldview-feedback')
+      .send(feedbackRequest('gemini-model'))
+      .expect(502);
+  });
+
   it('defaults feedback to Gemini and validates all non-stream request bodies', async () => {
     const { app, assertModelAllowed, getClient } = makeFixture();
     await request(app)
       .post('/api/ai/worldview-feedback')
-      .send({
-        selectedModel: 'gemini-model',
-        customWorldviewText: 'worldview',
-        galleryData: { galleryTitle: 'gallery', posts: [] },
-      })
+      .send(feedbackRequest('gemini-model'))
       .expect(200, { feedback: 'feedback' });
     expect(assertModelAllowed).toHaveBeenCalledWith('gemini', 'gemini-model');
     expect(getClient).toHaveBeenCalledWith('session-1', 'gemini');
@@ -463,5 +542,38 @@ describe('generation route lifecycle', () => {
     await request(app).post('/api/ai/posts').send({}).expect(400);
     await request(app).post('/api/ai/comments/follow-up').send({}).expect(400);
     await request(app).post('/api/ai/worldview-feedback').send({}).expect(400);
+  });
+
+  it('rejects local-only worldline metadata at every AI route boundary', async () => {
+    const { app } = makeFixture();
+    const worldlineId = 'WL-1234-ABCD-5678';
+
+    await request(app)
+      .post('/api/ai/gallery/stream')
+      .send({ ...galleryContext, worldlineId })
+      .expect(400);
+    await request(app)
+      .post('/api/ai/posts')
+      .send({
+        newPostData: { title: 'title', author: 'author', content: 'content' },
+        galleryContext: { ...galleryContext, worldlineId },
+      })
+      .expect(400);
+    await request(app)
+      .post('/api/ai/comments/follow-up')
+      .send({
+        ...followUpRequest(),
+        galleryContext: { ...galleryContext, worldlineId },
+      })
+      .expect(400);
+    await request(app)
+      .post('/api/ai/worldview-feedback')
+      .send({ ...feedbackRequest('gemini-model'), worldlineId })
+      .expect(400);
+
+    expect(engine.createGallery).not.toHaveBeenCalled();
+    expect(engine.createUserPost).not.toHaveBeenCalled();
+    expect(engine.createFollowUpComments).not.toHaveBeenCalled();
+    expect(engine.createWorldviewFeedback).not.toHaveBeenCalled();
   });
 });

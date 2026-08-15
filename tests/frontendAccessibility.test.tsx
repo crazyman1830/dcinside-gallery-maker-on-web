@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CommentSection } from '../components/CommentSection';
 import { FormSection } from '../components/FormSection';
+import { GalleryHeader } from '../components/GalleryHeader';
 import { InfoTooltip } from '../components/InfoTooltip';
 import { WritePostModal } from '../components/WritePostModal';
 import type { Post } from '../types';
@@ -55,6 +56,20 @@ const AccordionFixture = () => {
 };
 
 describe('frontend accessibility primitives', () => {
+  it('exposes the worldline badge and its multiverse explanation to keyboard users', () => {
+    render(<GalleryHeader galleryTitle="gallery" worldlineId="WL-1111-2222-3333" />);
+
+    const badge = screen.getByLabelText(
+      /세계선 WL-1111-2222-3333.*생성본 사이의 용어 차이.*평행세계의 변형/,
+    );
+    expect(badge).toHaveTextContent('세계선 WL-1111-2222-3333');
+    fireEvent.click(badge);
+    expect(badge.closest('details')).toHaveAttribute('open');
+    expect(screen.getByRole('note')).toHaveTextContent(
+      '같은 설정으로 다시 생성했을 때 생기는 용어 차이는 평행세계의 변형',
+    );
+  });
+
   it('removes closed accordion content from the DOM and restores it when opened', async () => {
     const user = userEvent.setup();
     render(<AccordionFixture />);

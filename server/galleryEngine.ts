@@ -4,12 +4,14 @@ import type {
   AddUserPostResponse,
   Comment,
   CreateGalleryParams,
+  FollowUpPostContext,
   GalleryData,
   GenerationWarning,
   GroundingSearchEntryPoint,
   GroundingSource,
   NewPostData,
   Post,
+  WorldviewFeedbackGallerySample,
 } from '../types';
 import type { PromptContext } from '../services/prompts/context';
 import {
@@ -25,7 +27,12 @@ import {
   POST_AUTHOR_PREFIX,
 } from '../constants';
 import { MAX_GROUNDING_SEARCH_ENTRY_POINT_BYTES } from '../schemas';
-import { getCurrentTimestamp, getDetailedTimestamp, timestampToEpoch } from '../utils/common';
+import {
+  getCurrentTimestamp,
+  getDetailedTimestamp,
+  resolveUserNickname,
+  timestampToEpoch,
+} from '../utils/common';
 import { parseGeminiResponse } from '../utils/jsonParser';
 import {
   evaluatePost,
@@ -71,6 +78,7 @@ class AiResponseTooLargeError extends Error {
 }
 
 const makeId = (prefix: string): string => `${prefix}-${randomUUID()}`;
+const MAX_GENERATED_AUTHOR_LENGTH = 64;
 
 const errorStatus = (error: unknown): number | undefined => {
   const candidate = error as { status?: unknown; statusCode?: unknown; code?: unknown };
@@ -223,13 +231,70 @@ export const validateGroundingSearchEntryPoint = (value: unknown): GroundingSear
   return { renderedContent: value };
 };
 
+const stripPostAuthorPrefix = (author: string): string =>
+  author.startsWith(POST_AUTHOR_PREFIX) ? author.slice(POST_AUTHOR_PREFIX.length).trim() : author;
+
+const conflictsWithActiveUser = (author: string, context: PromptContext): boolean => {
+  const normalized = stripPostAuthorPrefix(author.trim());
+  const activeUser = resolveUserNickname(context.userProfile ?? null);
+  if (activeUser && normalized === activeUser) return true;
+  const activeIp =
+    context.userProfile?.nicknameType === 'ANONYMOUS' ? context.userProfile.ip : undefined;
+  return Boolean(activeIp && normalized.includes(activeIp));
+};
+
+const isReservedGeneratedAuthor = (author: string, context: PromptContext): boolean =>
+  !author || author === '나' || author === '(글쓴이)' || conflictsWithActiveUser(author, context);
+
+const makeSafeFallbackAuthor = (
+  fallbackIndex: number,
+  context: PromptContext,
+  forbiddenAuthors: string[] = [],
+  separator = '',
+): string => {
+  const forbidden = new Set(forbiddenAuthors.map(author => stripPostAuthorPrefix(author.trim())));
+  let suffix = fallbackIndex + 1;
+  while (true) {
+    const candidate = `익명${separator}${suffix}`;
+    if (!forbidden.has(candidate) && !isReservedGeneratedAuthor(candidate, context)) {
+      return candidate;
+    }
+    suffix += 1;
+  }
+};
+
+const sanitizeGeneratedPostAuthor = (
+  currentAuthor: string,
+  fallbackIndex: number,
+  context: PromptContext,
+): string => {
+  const normalized = stripPostAuthorPrefix(currentAuthor.trim()).slice(
+    0,
+    MAX_GENERATED_AUTHOR_LENGTH,
+  );
+  if (isReservedGeneratedAuthor(normalized, context)) {
+    return makeSafeFallbackAuthor(fallbackIndex, context, [], '_');
+  }
+  return normalized;
+};
+
 const ensureUniqueCommentAuthor = (
   currentAuthor: string,
   postAuthor: string,
   fallbackIndex: number,
+  context: PromptContext,
 ): string => {
-  const candidate = currentAuthor || `익명${fallbackIndex + 1}`;
-  return candidate === postAuthor ? `${POST_AUTHOR_PREFIX}${candidate}` : candidate;
+  const normalized = stripPostAuthorPrefix(currentAuthor.trim()).slice(
+    0,
+    MAX_GENERATED_AUTHOR_LENGTH,
+  );
+  const candidate = normalized || `익명${fallbackIndex + 1}`;
+  if (isReservedGeneratedAuthor(candidate, context)) {
+    return makeSafeFallbackAuthor(fallbackIndex, context, [postAuthor]);
+  }
+  return candidate === postAuthor
+    ? `${POST_AUTHOR_PREFIX}${candidate.slice(0, MAX_GENERATED_AUTHOR_LENGTH - POST_AUTHOR_PREFIX.length)}`
+    : candidate;
 };
 
 const toPromptContext = (params: CreateGalleryParams): PromptContext => ({
@@ -253,10 +318,11 @@ const toComments = (
   postId: string,
   postAuthor: string,
   isBest: boolean,
+  context: PromptContext,
 ): Comment[] =>
   generated.map((comment, index) => ({
     id: makeId(`comment-${postId}`),
-    author: ensureUniqueCommentAuthor(comment.author, postAuthor, index),
+    author: ensureUniqueCommentAuthor(comment.author, postAuthor, index, context),
     text: comment.text || '...',
     timestamp: getCurrentTimestamp(),
     recommendations: comment.recommendations ?? Math.floor(Math.random() * (isBest ? 50 : 15)),
@@ -295,7 +361,7 @@ export const createGallery = async (
     }
   }
 
-  if (searchMetadataSeen && !searchEntryPoint) {
+  if (params.useSearch && (!searchMetadataSeen || !searchEntryPoint)) {
     throw new InvalidGroundingSearchEntryPointError();
   }
 
@@ -303,6 +369,10 @@ export const createGallery = async (
   try {
     generatedGallery = parseGeminiResponse(responseText);
   } catch (firstError) {
+    // A second generation without collecting a fresh grounding bundle could
+    // attach stale sources to different text. Search mode therefore fails as
+    // one atomic grounded response instead of performing an ungrounded repair.
+    if (params.useSearch) throw new MalformedAiResponseError(firstError);
     try {
       generatedGallery = parseGeminiResponse(
         await repairGalleryGeneration(ai, context, params.selectedModel, signal),
@@ -328,7 +398,7 @@ export const createGallery = async (
     if (signal?.aborted) throw new DOMException('The request was aborted.', 'AbortError');
     const isBest = postIndex === 0;
     const postId = makeId('post');
-    const postAuthor = generatedPost.author || `익명_${postIndex + 1}`;
+    const postAuthor = sanitizeGeneratedPostAuthor(generatedPost.author, postIndex, context);
     const minComments = isBest ? MIN_COMMENTS_PER_BEST_POST : MIN_COMMENTS_PER_POST;
     const maxComments = isBest ? MAX_COMMENTS_PER_BEST_POST : MAX_COMMENTS_PER_POST;
 
@@ -409,11 +479,16 @@ export const createGallery = async (
       warnings.push(warning);
       await callbacks.onWarning?.(warning);
     }
-    const comments = toComments(generatedComments, postId, postAuthor, isBest);
-    while (commentsResult.status === 'fulfilled' && comments.length < minComments) {
+    const comments = toComments(generatedComments, postId, postAuthor, isBest, context);
+    while (comments.length < minComments) {
       comments.push({
         id: makeId(`comment-fallback-${postId}`),
-        author: `자동댓글${comments.length + 1}`,
+        author: ensureUniqueCommentAuthor(
+          `자동댓글${comments.length + 1}`,
+          postAuthor,
+          comments.length,
+          context,
+        ),
         text: isBest ? '이 글은 좀 개념글 감이다.' : '그럴 수도 있겠네.',
         timestamp: getCurrentTimestamp(),
         recommendations: 0,
@@ -524,11 +599,16 @@ export const createUserPost = async (
     });
   }
   const postId = makeId('user-post');
-  const comments = toComments(generatedComments, postId, newPostData.author, isBest);
+  const comments = toComments(generatedComments, postId, newPostData.author, isBest, context);
   while (!commentsFailed && comments.length < minComments) {
     comments.push({
       id: makeId(`comment-fallback-${postId}`),
-      author: `자동댓글${comments.length + 1}`,
+      author: ensureUniqueCommentAuthor(
+        `자동댓글${comments.length + 1}`,
+        newPostData.author,
+        comments.length,
+        context,
+      ),
       text: isBest ? '이 글은 좀 개념글 감이다.' : '그럴 수도 있겠네.',
       timestamp: getCurrentTimestamp(),
       recommendations: 0,
@@ -553,19 +633,21 @@ export const createUserPost = async (
 
 export const createFollowUpComments = async (
   ai: GoogleGenAI,
-  targetPost: Post,
-  updatedComments: Comment[],
+  targetPost: FollowUpPostContext,
+  recentComments: Comment[],
+  totalCommentCount: number,
   contextParams: CreateGalleryParams,
   signal?: AbortSignal,
 ): Promise<Comment[]> => {
-  const remainingCapacity = Math.max(0, MAX_TOTAL_COMMENTS_PER_POST - updatedComments.length);
+  const remainingCapacity = Math.max(0, MAX_TOTAL_COMMENTS_PER_POST - totalCommentCount);
   if (remainingCapacity === 0) return [];
   const maxComments = Math.min(MAX_AI_FOLLOW_UP_COMMENTS, remainingCapacity);
   const minComments = Math.min(MIN_AI_FOLLOW_UP_COMMENTS, maxComments);
   const generated = await generateFollowUpComments(
     ai,
     targetPost,
-    updatedComments,
+    recentComments,
+    totalCommentCount,
     toPromptContext(contextParams),
     minComments,
     maxComments,
@@ -575,10 +657,10 @@ export const createFollowUpComments = async (
   const basePostAuthor = targetPost.author.startsWith(POST_AUTHOR_PREFIX)
     ? targetPost.author.slice(POST_AUTHOR_PREFIX.length)
     : targetPost.author;
+  const context = toPromptContext(contextParams);
   return generated.map((comment, index) => ({
     id: makeId(`ai-followup-${targetPost.id}-${index}`),
-    author:
-      comment.author === basePostAuthor ? `${POST_AUTHOR_PREFIX}${comment.author}` : comment.author,
+    author: ensureUniqueCommentAuthor(comment.author, basePostAuthor, index, context),
     text: comment.text,
     timestamp: getCurrentTimestamp(),
     recommendations: comment.recommendations ?? Math.floor(Math.random() * 10),
@@ -589,17 +671,9 @@ export const createFollowUpComments = async (
 export const createWorldviewFeedback = (
   ai: GoogleGenAI,
   customWorldviewText: string,
-  galleryData: GalleryData,
+  gallerySample: WorldviewFeedbackGallerySample,
   model: string,
   signal?: AbortSignal,
 ): Promise<string> => {
-  // Grounding links and Search Suggestions are licensed transient display
-  // metadata. Reconstruct the AI input explicitly so they cannot be analyzed,
-  // cached, or repurposed by a follow-up provider call.
-  const transientFreeGalleryData: GalleryData = {
-    galleryTitle: galleryData.galleryTitle,
-    posts: galleryData.posts,
-    ...(galleryData.warnings ? { warnings: galleryData.warnings } : {}),
-  };
-  return generateFeedback(ai, customWorldviewText, transientFreeGalleryData, model, signal);
+  return generateFeedback(ai, customWorldviewText, gallerySample, model, signal);
 };

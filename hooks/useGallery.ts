@@ -1,12 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { type AsyncJob, type AsyncJobKind, Comment, UserProfile, type ReplyTarget } from '../types';
+import {
+  type AsyncJob,
+  type AsyncJobKind,
+  Comment,
+  type CreateGalleryInput,
+  type GalleryContextParams,
+  UserProfile,
+  type ReplyTarget,
+} from '../types';
 import * as galleryService from '../services/galleryService';
 import { createTimestamp, getFormattedErrorMessage, timestampToEpoch } from '../utils/common';
+import { createWorldlineId } from '../utils/worldline';
 import { MAX_TOTAL_COMMENTS_PER_POST, POST_AUTHOR_PREFIX } from '../constants';
 import { useGalleryStorage } from './useGalleryStorage';
 import { useUIState } from './useUIState';
 
-interface ExtendedCreateGalleryParams extends galleryService.CreateGalleryParams {
+interface ExtendedCreateGalleryParams extends CreateGalleryInput {
   userProfile: UserProfile;
 }
 
@@ -74,8 +83,12 @@ export const useGallery = () => {
       const isCurrent = () => generationRequestRef.current?.requestId === request.requestId;
 
       try {
+        const worldlineId = createWorldlineId();
+        const generationParams: CreateGalleryInput & { userProfile: UserProfile } = {
+          ...params,
+        };
         const data = await galleryService.createGalleryStreamed(
-          params,
+          generationParams,
           text => {
             if (!isCurrent()) return;
             // Keep only a small rolling sample. Progress is driven by explicit
@@ -96,7 +109,8 @@ export const useGallery = () => {
         // The previous session remains untouched until a complete result exists.
         // These synchronous state updates are batched into a single commit.
         sessionRevisionRef.current = storage.revision + 1;
-        storage.replaceSession(data, params, params.userProfile);
+        const galleryContext: GalleryContextParams = { ...generationParams, worldlineId };
+        storage.replaceSession(data, galleryContext, generationParams.userProfile);
 
         ui.setWarningMessage(null);
         if (data.warnings?.length) {

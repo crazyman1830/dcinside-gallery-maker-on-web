@@ -11,9 +11,9 @@ import { WorldviewFeedback } from './components/WorldviewFeedback';
 import { StreamingStatus } from './components/StreamingStatus';
 import { useGallery } from './hooks/useGallery';
 import { MAX_TOTAL_COMMENTS_PER_POST } from './constants';
-import type { AppView, CreateGalleryParams, UserProfile } from './types';
+import type { AppView, CreateGalleryInput, UserProfile } from './types';
 
-type GallerySubmission = CreateGalleryParams & { userProfile: UserProfile };
+type GallerySubmission = CreateGalleryInput & { userProfile: UserProfile };
 
 const App: React.FC = () => {
   const {
@@ -200,7 +200,11 @@ const App: React.FC = () => {
             className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-xl shadow-slate-200/60 animate-fade-in"
             aria-labelledby="gallery-content-title"
           >
-            <GalleryHeader galleryTitle={galleryData.galleryTitle} sources={galleryData.sources} />
+            <GalleryHeader
+              galleryTitle={galleryData.galleryTitle}
+              worldlineId={galleryContext?.worldlineId}
+              sources={galleryData.sources}
+            />
             <div className="min-h-[500px] bg-slate-50/30 p-4 md:p-6">
               <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
                 <h2

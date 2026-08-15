@@ -162,7 +162,35 @@ export interface CreateGalleryParams {
   userProfile?: UserProfile;
 }
 
-export type GalleryContextParams = CreateGalleryParams;
+export type CreateGalleryInput = CreateGalleryParams;
+
+/** Local session metadata plus the AI request settings that produced the gallery. */
+export type GalleryContextParams = CreateGalleryParams & {
+  worldlineId: string;
+};
+
+export interface FollowUpPostContext {
+  id: string;
+  title: string;
+  author: string;
+  content: string;
+}
+
+export interface WorldviewFeedbackCommentSample {
+  author: string;
+  text: string;
+}
+
+export interface WorldviewFeedbackPostSample {
+  title: string;
+  content: string;
+  comments: WorldviewFeedbackCommentSample[];
+}
+
+export interface WorldviewFeedbackGallerySample {
+  galleryTitle: string;
+  posts: WorldviewFeedbackPostSample[];
+}
 
 export interface NewPostData {
   title: string;
@@ -206,7 +234,14 @@ export type GalleryStreamEvent =
   | { type: 'chunk'; text: string }
   | { type: 'warning'; warning: GenerationWarning }
   | { type: 'result'; data: GalleryData }
-  | { type: 'error'; message: string; code?: string; retryable?: boolean; requestId?: string };
+  | {
+      type: 'error';
+      message: string;
+      code?: string;
+      retryable?: boolean;
+      retryAfterSeconds?: number;
+      requestId?: string;
+    };
 
 export interface AddUserPostResponse {
   post: Post;

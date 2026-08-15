@@ -29,6 +29,7 @@ const gallery: GalleryData = {
 };
 
 const context: GalleryContextParams = {
+  worldlineId: 'WL-1111-2222-3333',
   topic: '테스트',
   discussionContext: '',
   worldviewValue: 'NONE',
@@ -99,6 +100,16 @@ describe('useGalleryStorage', () => {
     expect(result.current.galleryContext?.topic).toBe('새 주제');
     expect(result.current.revision).toBe(replacementRevision + 1);
     await waitFor(() => expect(result.current.storageWarning).toBeNull());
+  });
+
+  it('restores the same worldline after the storage hook is remounted', async () => {
+    const first = renderHook(() => useGalleryStorage());
+    act(() => first.result.current.replaceSession(gallery, context, profile));
+    await waitFor(() => expect(localStorage.getItem(SESSION_STORAGE_KEY)).not.toBeNull());
+    first.unmount();
+
+    const restored = renderHook(() => useGalleryStorage());
+    expect(restored.result.current.galleryContext?.worldlineId).toBe(context.worldlineId);
   });
 
   it('keeps a newly created search-grounded session in memory without persisting it', async () => {
@@ -177,6 +188,30 @@ describe('useGalleryStorage', () => {
     expect(result.current.galleryData).toBeNull();
     expect(result.current.storageWarning).toBe(CORRUPT_SESSION_STORAGE_WARNING);
     expect(localStorage.getItem(SESSION_STORAGE_KEY)).toBe(rawSession);
+  });
+
+  it('preserves a legacy V2 session when Web Crypto cannot issue its missing worldline', () => {
+    const storedContext: Record<string, unknown> = { ...context };
+    delete storedContext.worldlineId;
+    const rawSession = JSON.stringify({
+      version: 2,
+      revision: 2,
+      savedAt: '2026-08-14T00:00:00.000Z',
+      gallery,
+      context: storedContext,
+      profile,
+    });
+    localStorage.setItem(SESSION_STORAGE_KEY, rawSession);
+    vi.stubGlobal('crypto', undefined);
+
+    try {
+      const { result } = renderHook(() => useGalleryStorage());
+      expect(result.current.galleryData).toBeNull();
+      expect(result.current.storageWarning).toBe(CORRUPT_SESSION_STORAGE_WARNING);
+      expect(localStorage.getItem(SESSION_STORAGE_KEY)).toBe(rawSession);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('keeps memory state and surfaces a warning if persistence fails', async () => {

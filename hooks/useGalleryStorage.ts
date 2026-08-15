@@ -10,7 +10,6 @@ import {
 import type {
   AiProvider,
   Comment,
-  CreateGalleryParams,
   GalleryContextParams,
   GalleryData,
   GallerySessionV2,
@@ -20,12 +19,13 @@ import type {
 } from '../types';
 import { AI_MODELS, DEFAULT_AI_PROVIDER, migrateModelForProvider } from '../constants';
 import {
-  createGalleryParamsSchema,
+  galleryContextSchema,
   gallerySessionV2Schema,
   generationWarningSchema,
   userProfileSchema,
 } from '../schemas';
 import { migrateTimestamp, timestampToEpoch } from '../utils/common';
+import { createWorldlineId, WORLDLINE_ID_PATTERN } from '../utils/worldline';
 
 export const SESSION_STORAGE_KEY = 'dcgm.session.v2';
 export const LEGACY_SESSION_KEYS = ['galleryData', 'galleryContext', 'userProfile'] as const;
@@ -183,7 +183,20 @@ export const migrateGalleryContext = (value: unknown): GalleryContextParams | nu
     provider,
   );
   if (!AI_MODELS[provider].some(option => option.value === model)) return null;
+  let worldlineId: string;
+  if (typeof value.worldlineId === 'string' && WORLDLINE_ID_PATTERN.test(value.worldlineId)) {
+    worldlineId = value.worldlineId;
+  } else {
+    try {
+      worldlineId = createWorldlineId();
+    } catch {
+      // Returning null lets the caller preserve the original stored payload
+      // instead of deleting a recoverable session when Web Crypto is unavailable.
+      return null;
+    }
+  }
   const candidate = {
+    worldlineId,
     topic: value.topic,
     discussionContext: value.discussionContext,
     worldviewValue: value.worldviewValue,
@@ -200,10 +213,9 @@ export const migrateGalleryContext = (value: unknown): GalleryContextParams | nu
     useSearch: value.useSearch,
     userProfile: value.userProfile,
   };
-  // Importing the full request schema here keeps restored state on the same
-  // contract as a fresh API request while preserving provider migrations.
-  const result = createGalleryParamsSchema.safeParse(candidate);
-  return result.success ? (result.data as CreateGalleryParams) : null;
+  // Persisted context has one extra local-only field that is never sent to AI.
+  const result = galleryContextSchema.safeParse(candidate);
+  return result.success ? result.data : null;
 };
 
 const migrateUserProfile = (value: unknown): UserProfile | null => {

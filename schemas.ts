@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { NUMBER_OF_POSTS } from './constants';
+import { WORLDLINE_ID_PATTERN } from './utils/worldline';
 
 const nonEmptyTrimmed = (maximum: number) => z.string().trim().min(1).max(maximum);
 const optionalTrimmed = (maximum: number) => z.string().trim().max(maximum);
@@ -11,6 +13,9 @@ const oneOf = <const T extends readonly string[]>(values: T) =>
 
 export const aiProviderSchema = z.enum(['gemini', 'vertex']);
 export const userNicknameTypeSchema = z.enum(['FIXED', 'ANONYMOUS']);
+export const worldlineIdSchema = z
+  .string()
+  .regex(WORLDLINE_ID_PATTERN, 'Invalid worldline identifier.');
 
 export const replyTargetSchema = z
   .object({
@@ -78,36 +83,46 @@ const ageRangeSchema = z.union([
     .refine(values => new Set(values).size === values.length, 'Age groups must be unique.'),
 ]);
 
-export const createGalleryParamsSchema = z
-  .object({
-    topic: nonEmptyTrimmed(20),
-    discussionContext: optionalTrimmed(500),
-    worldviewValue: oneOf(worldviewValues),
-    customWorldviewText: optionalTrimmed(500).optional(),
-    worldviewEraValue: oneOf(worldviewEraValues),
-    toxicityLevelValue: oneOf(toxicityValues),
-    anonymousNickRatioValue: oneOf(anonymousRatioValues),
-    userSpecies: optionalTrimmed(30),
-    userAffiliation: optionalTrimmed(30),
-    genderRatioValue: genderRatioSchema,
-    ageRangeValue: ageRangeSchema,
-    selectedProvider: aiProviderSchema,
-    selectedModel: modelSchema,
-    useSearch: z.boolean(),
-    userProfile: userProfileSchema.optional(),
-  })
-  .strict()
-  .superRefine((params, context) => {
-    if (params.worldviewValue === 'CUSTOM' && !params.customWorldviewText) {
-      context.addIssue({
-        code: 'custom',
-        path: ['customWorldviewText'],
-        message: 'A custom worldview description is required.',
-      });
-    }
-  });
+const createGalleryParamFields = {
+  topic: nonEmptyTrimmed(20),
+  discussionContext: optionalTrimmed(500),
+  worldviewValue: oneOf(worldviewValues),
+  customWorldviewText: optionalTrimmed(500).optional(),
+  worldviewEraValue: oneOf(worldviewEraValues),
+  toxicityLevelValue: oneOf(toxicityValues),
+  anonymousNickRatioValue: oneOf(anonymousRatioValues),
+  userSpecies: optionalTrimmed(30),
+  userAffiliation: optionalTrimmed(30),
+  genderRatioValue: genderRatioSchema,
+  ageRangeValue: ageRangeSchema,
+  selectedProvider: aiProviderSchema,
+  selectedModel: modelSchema,
+  useSearch: z.boolean(),
+  userProfile: userProfileSchema.optional(),
+} as const;
 
-export const galleryContextSchema = createGalleryParamsSchema;
+const requireCustomWorldview = (
+  params: { worldviewValue: string; customWorldviewText?: string },
+  context: z.RefinementCtx,
+) => {
+  if (params.worldviewValue === 'CUSTOM' && !params.customWorldviewText) {
+    context.addIssue({
+      code: 'custom',
+      path: ['customWorldviewText'],
+      message: 'A custom worldview description is required.',
+    });
+  }
+};
+
+export const createGalleryParamsSchema = z
+  .object(createGalleryParamFields)
+  .strict()
+  .superRefine(requireCustomWorldview);
+
+export const galleryContextSchema = z
+  .object({ worldlineId: worldlineIdSchema, ...createGalleryParamFields })
+  .strict()
+  .superRefine(requireCustomWorldview);
 
 export const newPostDataSchema = z
   .object({
@@ -117,12 +132,14 @@ export const newPostDataSchema = z
   })
   .strict();
 
+const timestampSchema = z.string().max(35).datetime({ offset: true });
+
 export const commentSchema = z
   .object({
     id: nonEmptyTrimmed(256),
     author: nonEmptyTrimmed(64),
     text: nonEmptyTrimmed(1_000),
-    timestamp: z.string().datetime({ offset: true }),
+    timestamp: timestampSchema,
     recommendations: safeCount,
     nonRecommendations: safeCount,
     voted: z.enum(['rec', 'nonrec']).nullable().optional(),
@@ -147,7 +164,7 @@ export const postSchema: z.ZodType<{
     id: nonEmptyTrimmed(256),
     title: nonEmptyTrimmed(200),
     author: nonEmptyTrimmed(64),
-    timestamp: z.string().datetime({ offset: true }),
+    timestamp: timestampSchema,
     content: nonEmptyTrimmed(10_000),
     views: safeCount,
     recommendations: safeCount,
@@ -211,6 +228,11 @@ export const galleryDataSchema = z
   })
   .strict();
 
+/** Terminal payload for a freshly generated gallery, before user posts are added. */
+export const initialGalleryDataSchema = galleryDataSchema.extend({
+  posts: z.array(postSchema).length(NUMBER_OF_POSTS),
+});
+
 // Google Search Suggestions and grounding links are licensed for transient
 // display with the associated response only. They are intentionally excluded
 // from persistence and from all subsequent AI inputs.
@@ -226,18 +248,54 @@ export const addUserPostRequestSchema = z
   })
   .strict();
 
+export const followUpPostContextSchema = z
+  .object({
+    id: nonEmptyTrimmed(256),
+    title: nonEmptyTrimmed(200),
+    author: nonEmptyTrimmed(64),
+    content: nonEmptyTrimmed(10_000),
+  })
+  .strict();
+
 export const followUpCommentsRequestSchema = z
   .object({
-    targetPost: postSchema,
-    updatedComments: z.array(commentSchema).max(30),
+    targetPost: followUpPostContextSchema,
+    recentComments: z.array(commentSchema).min(1).max(6),
+    totalCommentCount: z.number().int().min(1).max(30),
     galleryContext: createGalleryParamsSchema,
+  })
+  .strict()
+  .refine(request => request.totalCommentCount >= request.recentComments.length, {
+    message: 'Total comment count cannot be smaller than the supplied recent comments.',
+    path: ['totalCommentCount'],
+  });
+
+export const worldviewFeedbackCommentSampleSchema = z
+  .object({
+    author: nonEmptyTrimmed(64),
+    text: nonEmptyTrimmed(500),
+  })
+  .strict();
+
+export const worldviewFeedbackPostSampleSchema = z
+  .object({
+    title: nonEmptyTrimmed(200),
+    content: nonEmptyTrimmed(1_200),
+    comments: z.array(worldviewFeedbackCommentSampleSchema).max(3),
+  })
+  .strict();
+
+export const worldviewFeedbackGallerySampleSchema = z
+  .object({
+    galleryTitle: nonEmptyTrimmed(200),
+    posts: z.array(worldviewFeedbackPostSampleSchema).min(1).max(NUMBER_OF_POSTS),
   })
   .strict();
 
 export const worldviewFeedbackRequestSchema = z
   .object({
     customWorldviewText: nonEmptyTrimmed(500),
-    galleryData: transientFreeGalleryDataSchema,
+    gallerySample: worldviewFeedbackGallerySampleSchema,
     selectedModel: modelSchema,
     selectedProvider: aiProviderSchema.optional(),
   })
@@ -261,14 +319,23 @@ export const geminiPostContentSchema = z.object({
 
 export const geminiResponseDataSchema = z.object({
   galleryTitle: nonEmptyTrimmed(200),
-  posts: z.array(geminiPostContentSchema).min(1).max(20),
+  posts: z.array(geminiPostContentSchema).length(NUMBER_OF_POSTS),
 });
 
-export const geminiEvaluationResponseSchema = z.object({
-  suggestedViews: safeCount,
-  suggestedRecommendations: safeCount,
-  suggestedNonRecommendations: safeCount,
-});
+export const geminiEvaluationResponseSchema = z
+  .object({
+    suggestedViews: safeCount.min(20).max(5_000),
+    suggestedRecommendations: safeCount.max(5_000),
+    suggestedNonRecommendations: safeCount.max(5_000),
+  })
+  .refine(
+    value =>
+      value.suggestedRecommendations + value.suggestedNonRecommendations <= value.suggestedViews,
+    {
+      message: 'Total votes cannot exceed views.',
+      path: ['suggestedViews'],
+    },
+  );
 
 export const gallerySessionV2Schema = z
   .object({
@@ -276,7 +343,7 @@ export const gallerySessionV2Schema = z
     revision: z.number().int().nonnegative(),
     savedAt: z.string().datetime({ offset: true }),
     gallery: transientFreeGalleryDataSchema,
-    context: createGalleryParamsSchema,
+    context: galleryContextSchema,
     profile: userProfileSchema.nullable(),
   })
   .strict();

@@ -20,6 +20,22 @@ describe('protected JSON parsing', () => {
         "title": "literal // text",
         "author": "tester",
         "content": "escaped quote: \\" and /* text */"
+      }, {
+        "title": "title 2",
+        "author": "tester 2",
+        "content": "content 2"
+      }, {
+        "title": "title 3",
+        "author": "tester 3",
+        "content": "content 3"
+      }, {
+        "title": "title 4",
+        "author": "tester 4",
+        "content": "content 4"
+      }, {
+        "title": "title 5",
+        "author": "tester 5",
+        "content": "content 5"
       }]
     }`;
 
@@ -81,7 +97,11 @@ describe('protected JSON parsing', () => {
   it('exposes runtime guards and protected parser errors without leaking input', () => {
     const valid = {
       galleryTitle: 'g',
-      posts: [{ title: 't', author: 'a', content: 'c' }],
+      posts: Array.from({ length: 5 }, (_, index) => ({
+        title: `t${index}`,
+        author: `a${index}`,
+        content: `c${index}`,
+      })),
     };
     expect(isGeminiResponseData(valid)).toBe(true);
     expect(isGeminiResponseData({ galleryTitle: 'g', posts: [null] })).toBe(false);
@@ -89,7 +109,7 @@ describe('protected JSON parsing', () => {
     expect(isGeminiCommentContentArray({})).toBe(false);
     expect(
       isGeminiEvaluationResponse({
-        suggestedViews: 1,
+        suggestedViews: 20,
         suggestedRecommendations: 0,
         suggestedNonRecommendations: 0,
       }),

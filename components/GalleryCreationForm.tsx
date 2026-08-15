@@ -16,7 +16,7 @@ import {
   saveUserPreset,
 } from '../services/presetService';
 import { AiCredentialStatus, getAiCredentialStatus } from '../services/aiCredentialClient';
-import { CreateGalleryParams, Preset, UserProfile } from '../types';
+import { CreateGalleryInput, Preset, UserProfile } from '../types';
 import {
   DEFAULT_AI_PROVIDER,
   DEFAULT_MODEL_BY_PROVIDER,
@@ -25,7 +25,7 @@ import {
 
 interface GalleryCreationFormProps {
   isLoading: boolean;
-  onSubmit: (params: CreateGalleryParams & { userProfile: UserProfile }) => Promise<void> | void;
+  onSubmit: (params: CreateGalleryInput & { userProfile: UserProfile }) => Promise<void> | void;
   setFormError: (message: string | null) => void;
 }
 

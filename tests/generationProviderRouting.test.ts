@@ -67,6 +67,14 @@ describe('generation provider routing', () => {
       nonRecommendations: 0,
       comments: [],
     };
+    const recentComment = {
+      id: 'comment-1',
+      author: 'commenter',
+      text: 'comment',
+      timestamp: '2026-08-14T00:00:00.000Z',
+      recommendations: 0,
+      nonRecommendations: 0,
+    };
     engine.createGallery.mockResolvedValueOnce({ galleryTitle: 'gallery', posts: [post] });
     engine.createUserPost.mockResolvedValueOnce({ post, warnings: [] });
     engine.createFollowUpComments.mockResolvedValueOnce([]);
@@ -82,8 +90,14 @@ describe('generation provider routing', () => {
     await request(app)
       .post('/api/ai/comments/follow-up')
       .send({
-        targetPost: post,
-        updatedComments: [],
+        targetPost: {
+          id: post.id,
+          title: post.title,
+          author: post.author,
+          content: post.content,
+        },
+        recentComments: [recentComment],
+        totalCommentCount: 1,
         galleryContext,
       })
       .expect(200);
@@ -93,7 +107,10 @@ describe('generation provider routing', () => {
         selectedProvider: 'vertex',
         selectedModel: 'vertex-model',
         customWorldviewText: 'worldview',
-        galleryData: { galleryTitle: 'test', posts: [] },
+        gallerySample: {
+          galleryTitle: 'test',
+          posts: [{ title: post.title, content: post.content, comments: [] }],
+        },
       })
       .expect(200, { feedback: 'test feedback' });
 
@@ -115,18 +132,25 @@ describe('generation provider routing', () => {
     );
     expect(engine.createFollowUpComments).toHaveBeenCalledWith(
       client,
-      post,
-      [],
+      { id: post.id, title: post.title, author: post.author, content: post.content },
+      [recentComment],
+      1,
       expect.objectContaining({ selectedProvider: 'vertex' }),
       expect.any(AbortSignal),
     );
     expect(engine.createWorldviewFeedback).toHaveBeenCalledWith(
       client,
       'worldview',
-      { galleryTitle: 'test', posts: [] },
+      {
+        galleryTitle: 'test',
+        posts: [{ title: post.title, content: post.content, comments: [] }],
+      },
       'vertex-model',
       expect.any(AbortSignal),
     );
+    expect(engine.createGallery.mock.calls[0]?.[1]).not.toHaveProperty('worldlineId');
+    expect(engine.createUserPost.mock.calls[0]?.[2]).not.toHaveProperty('worldlineId');
+    expect(engine.createFollowUpComments.mock.calls[0]?.[4]).not.toHaveProperty('worldlineId');
   });
 
   it('times out a provider that ignores abort and releases the session lock', async () => {
@@ -139,7 +163,10 @@ describe('generation provider routing', () => {
       selectedProvider: 'vertex',
       selectedModel: 'vertex-model',
       customWorldviewText: 'worldview',
-      galleryData: { galleryTitle: 'test', posts: [] },
+      gallerySample: {
+        galleryTitle: 'test',
+        posts: [{ title: 'title', content: 'content', comments: [] }],
+      },
     };
     const timedOut = await request(app)
       .post('/api/ai/worldview-feedback')

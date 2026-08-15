@@ -4,6 +4,7 @@ import {
   commentSchema,
   createGalleryParamsSchema,
   followUpCommentsRequestSchema,
+  galleryContextSchema,
   galleryDataSchema,
   gallerySessionV2Schema,
   geminiCommentContentSchema,
@@ -12,6 +13,7 @@ import {
   generationWarningSchema,
   groundingSearchEntryPointSchema,
   groundingSourceSchema,
+  initialGalleryDataSchema,
   newPostDataSchema,
   postSchema,
   replyTargetSchema,
@@ -19,7 +21,7 @@ import {
   worldviewFeedbackRequestSchema,
 } from '../schemas';
 
-const context = {
+const requestContext = {
   topic: '  주제  ',
   discussionContext: '',
   worldviewValue: 'NONE',
@@ -34,6 +36,11 @@ const context = {
   selectedProvider: 'gemini',
   selectedModel: 'gemini-3.5-flash',
   useSearch: false,
+} as const;
+
+const context = {
+  ...requestContext,
+  worldlineId: 'WL-1111-2222-3333',
 } as const;
 
 const comment = {
@@ -63,17 +70,32 @@ const searchEntryPoint = {
 
 describe('shared runtime schemas', () => {
   it('normalizes a valid request and rejects unknown API fields', () => {
-    expect(createGalleryParamsSchema.parse(context).topic).toBe('주제');
-    expect(createGalleryParamsSchema.safeParse({ ...context, unexpected: true }).success).toBe(
-      false,
-    );
+    expect(createGalleryParamsSchema.parse(requestContext).topic).toBe('주제');
+    expect(createGalleryParamsSchema.safeParse(context).success).toBe(false);
+    expect(galleryContextSchema.safeParse(context).success).toBe(true);
+    expect(galleryContextSchema.safeParse(requestContext).success).toBe(false);
+    expect(
+      createGalleryParamsSchema.safeParse({ ...requestContext, unexpected: true }).success,
+    ).toBe(false);
     expect(newPostDataSchema.safeParse({ title: 't', author: 'a', content: 'c' }).success).toBe(
       true,
     );
     expect(
       addUserPostRequestSchema.safeParse({
-        newPostData: { title: 't', author: 'a', content: 'c', id: 'client-id' },
+        newPostData: { title: 't', author: 'a', content: 'c' },
+        galleryContext: requestContext,
+      }).success,
+    ).toBe(true);
+    expect(
+      addUserPostRequestSchema.safeParse({
+        newPostData: { title: 't', author: 'a', content: 'c' },
         galleryContext: context,
+      }).success,
+    ).toBe(false);
+    expect(
+      addUserPostRequestSchema.safeParse({
+        newPostData: { title: 't', author: 'a', content: 'c', id: 'client-id' },
+        galleryContext: requestContext,
       }).success,
     ).toBe(false);
   });
@@ -81,14 +103,14 @@ describe('shared runtime schemas', () => {
   it('enforces custom worldview and unique manual age groups', () => {
     expect(
       createGalleryParamsSchema.safeParse({
-        ...context,
+        ...requestContext,
         worldviewValue: 'CUSTOM',
         customWorldviewText: '',
       }).success,
     ).toBe(false);
     expect(
       createGalleryParamsSchema.safeParse({
-        ...context,
+        ...requestContext,
         worldviewValue: 'CUSTOM',
         customWorldviewText: '우주 도시',
         genderRatioValue: '100',
@@ -97,12 +119,12 @@ describe('shared runtime schemas', () => {
     ).toBe(true);
     expect(
       createGalleryParamsSchema.safeParse({
-        ...context,
+        ...requestContext,
         ageRangeValue: ['TWENTIES', 'TWENTIES'],
       }).success,
     ).toBe(false);
     expect(
-      createGalleryParamsSchema.safeParse({ ...context, worldviewValue: 'UNKNOWN' }).success,
+      createGalleryParamsSchema.safeParse({ ...requestContext, worldviewValue: 'UNKNOWN' }).success,
     ).toBe(false);
   });
 
@@ -133,6 +155,12 @@ describe('shared runtime schemas', () => {
       commentSchema.safeParse({ ...comment, replyTo: { commentId: 'c0', author: '원글' } }).success,
     ).toBe(true);
     expect(commentSchema.safeParse({ ...comment, recommendations: -1 }).success).toBe(false);
+    expect(
+      commentSchema.safeParse({
+        ...comment,
+        timestamp: `2026-08-14T00:00:00.${'1'.repeat(100)}Z`,
+      }).success,
+    ).toBe(false);
     expect(postSchema.safeParse({ ...post, views: Number.POSITIVE_INFINITY }).success).toBe(false);
     expect(
       generationWarningSchema.safeParse({ code: 'DEGRADED', message: '보조 생성 실패' }).success,
@@ -140,6 +168,15 @@ describe('shared runtime schemas', () => {
     expect(
       galleryDataSchema.safeParse({ galleryTitle: '갤러리', posts: [post], unknown: true }).success,
     ).toBe(false);
+    expect(initialGalleryDataSchema.safeParse({ galleryTitle: 'g', posts: [post] }).success).toBe(
+      false,
+    );
+    expect(
+      initialGalleryDataSchema.safeParse({
+        galleryTitle: 'g',
+        posts: Array.from({ length: 5 }, (_, index) => ({ ...post, id: `p-${index}` })),
+      }).success,
+    ).toBe(true);
   });
 
   it('accepts only bounded HTTPS grounding sources', () => {
@@ -157,17 +194,23 @@ describe('shared runtime schemas', () => {
   it('validates endpoint nesting and comment caps', () => {
     expect(
       followUpCommentsRequestSchema.safeParse({
-        targetPost: post,
-        updatedComments: [comment],
-        galleryContext: context,
+        targetPost: {
+          id: post.id,
+          title: post.title,
+          author: post.author,
+          content: post.content,
+        },
+        recentComments: [comment],
+        totalCommentCount: 1,
+        galleryContext: requestContext,
       }).success,
     ).toBe(true);
     expect(
       worldviewFeedbackRequestSchema.safeParse({
         customWorldviewText: '설정',
-        galleryData: {
+        gallerySample: {
           galleryTitle: '갤러리',
-          posts: [post],
+          posts: [],
           sources: [{ uri: 'https://example.test/' }],
           searchEntryPoint,
         },
@@ -176,32 +219,53 @@ describe('shared runtime schemas', () => {
     ).toBe(false);
     expect(
       followUpCommentsRequestSchema.safeParse({
-        targetPost: post,
-        updatedComments: Array.from({ length: 31 }, (_, index) => ({
+        targetPost: {
+          id: post.id,
+          title: post.title,
+          author: post.author,
+          content: post.content,
+        },
+        recentComments: Array.from({ length: 7 }, (_, index) => ({
           ...comment,
           id: `c-${index}`,
         })),
-        galleryContext: context,
+        totalCommentCount: 7,
+        galleryContext: requestContext,
       }).success,
     ).toBe(false);
+    const feedbackRequest = {
+      customWorldviewText: '설정',
+      gallerySample: {
+        galleryTitle: '갤러리',
+        posts: [{ title: post.title, content: post.content, comments: [] }],
+      },
+      selectedModel: 'gemini-3.5-flash',
+      selectedProvider: 'gemini',
+    } as const;
+    expect(worldviewFeedbackRequestSchema.safeParse(feedbackRequest).success).toBe(true);
     expect(
       worldviewFeedbackRequestSchema.safeParse({
-        customWorldviewText: '설정',
-        galleryData: { galleryTitle: '갤러리', posts: [post] },
-        selectedModel: 'gemini-3.5-flash',
-        selectedProvider: 'gemini',
+        ...feedbackRequest,
+        worldlineId: context.worldlineId,
       }).success,
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it('normalizes provider payloads while enforcing element contracts', () => {
+    const generatedPost = { title: 't', author: 'a', content: 'c', ignored: true };
     expect(
       geminiResponseDataSchema.parse({
         galleryTitle: 'g',
         ignored: true,
-        posts: [{ title: 't', author: 'a', content: 'c', ignored: true }],
+        posts: Array.from({ length: 5 }, () => generatedPost),
       }),
-    ).toEqual({ galleryTitle: 'g', posts: [{ title: 't', author: 'a', content: 'c' }] });
+    ).toEqual({
+      galleryTitle: 'g',
+      posts: Array.from({ length: 5 }, () => ({ title: 't', author: 'a', content: 'c' })),
+    });
+    expect(
+      geminiResponseDataSchema.safeParse({ galleryTitle: 'g', posts: [generatedPost] }).success,
+    ).toBe(false);
     expect(
       geminiCommentContentSchema.parse({
         author: 'a',
@@ -215,6 +279,13 @@ describe('shared runtime schemas', () => {
         suggestedViews: 1.2,
         suggestedRecommendations: 0,
         suggestedNonRecommendations: 0,
+      }).success,
+    ).toBe(false);
+    expect(
+      geminiEvaluationResponseSchema.safeParse({
+        suggestedViews: 100,
+        suggestedRecommendations: 70,
+        suggestedNonRecommendations: 40,
       }).success,
     ).toBe(false);
   });

@@ -1,11 +1,16 @@
 import { Router, type Request, type Response } from 'express';
 import type { GoogleGenAI } from '@google/genai';
+import { z } from 'zod';
 import type { AiProvider } from '../../types';
 import { SEARCH_GROUNDING_RELEASE_ENABLED } from '../../constants';
 import {
   addUserPostRequestSchema,
+  commentSchema,
   createGalleryParamsSchema,
   followUpCommentsRequestSchema,
+  generationWarningSchema,
+  initialGalleryDataSchema,
+  postSchema,
   worldviewFeedbackRequestSchema,
 } from '../../schemas';
 import {
@@ -67,6 +72,32 @@ class NdjsonOutputLimitError extends Error {
     this.name = 'NdjsonOutputLimitError';
   }
 }
+
+class InvalidApiResponseError extends Error {
+  readonly status = 502;
+  readonly code = 'INVALID_API_RESPONSE';
+  readonly retryable = false;
+
+  constructor() {
+    super('The AI route produced an invalid response payload.');
+    this.name = 'InvalidApiResponseError';
+  }
+}
+
+const addUserPostResponseSchema = z
+  .object({
+    post: postSchema,
+    warnings: z.array(generationWarningSchema).max(100),
+  })
+  .strict();
+const followUpCommentsResponseSchema = z.array(commentSchema).max(30);
+const worldviewFeedbackResponseSchema = z.object({ feedback: z.string() }).strict();
+
+const parseResponseOrThrow = <T>(schema: z.ZodType<T>, value: unknown): T => {
+  const result = schema.safeParse(value);
+  if (!result.success) throw new InvalidApiResponseError();
+  return result.data;
+};
 
 const makeRequestAbort = (
   request: Request,
@@ -213,7 +244,7 @@ export const createGenerationRouter = (dependencies: GenerationRouteDependencies
           ).then(result =>
             writeNdjson(
               response,
-              { type: 'result', data: result },
+              { type: 'result', data: parseResponseOrThrow(initialGalleryDataSchema, result) },
               requestAbort!.signal,
               streamBudget,
             ),
@@ -235,6 +266,7 @@ export const createGenerationRouter = (dependencies: GenerationRouteDependencies
                 code: safe.code,
                 retryable: safe.retryable,
                 requestId: getRequestId(response),
+                retryAfterSeconds: safe.retryAfterSeconds,
               },
               requestAbort.signal,
               streamBudget,
@@ -250,6 +282,7 @@ export const createGenerationRouter = (dependencies: GenerationRouteDependencies
                 code: safe.code,
                 retryable: safe.retryable,
                 requestId: getRequestId(response),
+                retryAfterSeconds: safe.retryAfterSeconds,
               },
               requestAbort?.signal ?? AbortSignal.abort(),
               streamBudget,
@@ -289,7 +322,7 @@ export const createGenerationRouter = (dependencies: GenerationRouteDependencies
           requestAbort.signal,
         );
       });
-      response.json(result);
+      response.json(parseResponseOrThrow(addUserPostResponseSchema, result));
     } catch (error) {
       sendPublicError(response, error);
     } finally {
@@ -317,14 +350,15 @@ export const createGenerationRouter = (dependencies: GenerationRouteDependencies
           createFollowUpComments(
             client,
             body.targetPost,
-            body.updatedComments,
+            body.recentComments,
+            body.totalCommentCount,
             body.galleryContext,
             requestAbort.signal,
           ),
           requestAbort.signal,
         );
       });
-      response.json(result);
+      response.json(parseResponseOrThrow(followUpCommentsResponseSchema, result));
     } catch (error) {
       sendPublicError(response, error);
     } finally {
@@ -349,14 +383,14 @@ export const createGenerationRouter = (dependencies: GenerationRouteDependencies
           createWorldviewFeedback(
             client,
             body.customWorldviewText,
-            body.galleryData,
+            body.gallerySample,
             body.selectedModel,
             requestAbort.signal,
           ),
           requestAbort.signal,
         );
       });
-      response.json({ feedback });
+      response.json(parseResponseOrThrow(worldviewFeedbackResponseSchema, { feedback }));
     } catch (error) {
       sendPublicError(response, error);
     } finally {

@@ -80,6 +80,35 @@ describe('provider retry policy', () => {
     expect(limiter.activeCount).toBe(0);
   });
 
+  it('releases a capacity slot when an abort-ignoring provider is cancelled', async () => {
+    const limiter = new ProviderRpcLimiter(1);
+    const controller = new AbortController();
+    const reason = new DOMException('cancelled', 'AbortError');
+    const providerCall = limiter.run(() => new Promise<void>(() => undefined), controller.signal);
+
+    expect(limiter.activeCount).toBe(1);
+    controller.abort(reason);
+
+    await expect(providerCall).rejects.toBe(reason);
+    expect(limiter.activeCount).toBe(0);
+    await expect(limiter.run(async () => undefined)).resolves.toBeUndefined();
+  });
+
+  it('propagates abort-aware slot release through the provider retry wrapper', async () => {
+    const controller = new AbortController();
+    const baseline = providerRpcLimiter.activeCount;
+    const reason = new DOMException('cancelled', 'AbortError');
+    const providerCall = withProviderRetry(() => new Promise<void>(() => undefined), {
+      signal: controller.signal,
+    });
+
+    expect(providerRpcLimiter.activeCount).toBe(baseline + 1);
+    controller.abort(reason);
+
+    await expect(providerCall).rejects.toBe(reason);
+    expect(providerRpcLimiter.activeCount).toBe(baseline);
+  });
+
   it('closes the underlying provider stream before releasing its slot', async () => {
     const streamIterator = {
       next: vi.fn().mockResolvedValue({

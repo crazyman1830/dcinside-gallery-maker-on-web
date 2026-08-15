@@ -4,6 +4,7 @@ import type {
   Comment,
   CreateGalleryParams,
   GalleryData,
+  GalleryContextParams,
   NewPostData,
   Post,
 } from '../types';
@@ -19,7 +20,7 @@ import {
 } from '../services/galleryService';
 import { ApiError } from '../services/apiError';
 
-const context = {
+const requestContext = {
   topic: 'topic',
   discussionContext: '',
   worldviewValue: 'NONE',
@@ -34,6 +35,11 @@ const context = {
   selectedModel: 'gemini-2.5-flash',
   useSearch: false,
 } satisfies CreateGalleryParams;
+
+const context = {
+  ...requestContext,
+  worldlineId: 'WL-1234-ABCD-5678',
+} satisfies GalleryContextParams;
 
 const comment: Comment = {
   id: 'comment-1',
@@ -57,6 +63,14 @@ const post: Post = {
 };
 
 const gallery: GalleryData = { galleryTitle: 'gallery', posts: [post] };
+const initialGallery: GalleryData = {
+  galleryTitle: 'gallery',
+  posts: Array.from({ length: 5 }, (_, index) => ({
+    ...post,
+    id: `post-${index + 1}`,
+    title: `title-${index + 1}`,
+  })),
+};
 
 const ndjsonResponse = (events: unknown[]): Response => {
   const body = `${events.map(event => JSON.stringify(event)).join('\n')}\n`;
@@ -98,14 +112,16 @@ describe('gallery API JSON wrappers', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         newPostData,
-        galleryContext: { ...context, selectedModel: 'gemini-custom' },
+        galleryContext: { ...requestContext, selectedModel: 'gemini-custom' },
       }),
       signal: controller.signal,
     });
+    const requestBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(requestBody.galleryContext).not.toHaveProperty('worldlineId');
   });
 
   it('returns follow-up comments and exposes a structured API error message', async () => {
-    stubFetch(
+    const fetchMock = stubFetch(
       Response.json([comment]),
       Response.json({ error: 'follow-up failed' }, { status: 502 }),
     );
@@ -113,6 +129,26 @@ describe('gallery API JSON wrappers', () => {
     await expect(addFollowUpComments(post, [comment], context, 'gemini-custom')).resolves.toEqual([
       comment,
     ]);
+    const requestBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(requestBody).toMatchObject({
+      targetPost: {
+        id: post.id,
+        title: post.title,
+        author: post.author,
+        content: post.content,
+      },
+      recentComments: [comment],
+      totalCommentCount: 1,
+      galleryContext: {
+        selectedModel: 'gemini-custom',
+      },
+    });
+    expect(requestBody.galleryContext).toEqual({
+      ...requestContext,
+      selectedModel: 'gemini-custom',
+    });
+    expect(requestBody.galleryContext).not.toHaveProperty('worldlineId');
+    expect(requestBody.targetPost).not.toHaveProperty('comments');
     await expect(addFollowUpComments(post, [comment], context, 'gemini-custom')).rejects.toThrow(
       'follow-up failed',
     );
@@ -141,12 +177,48 @@ describe('gallery API JSON wrappers', () => {
       selectedModel: 'vertex-model',
       selectedProvider: 'vertex',
     });
-    expect(requestBody.galleryData).toEqual(gallery);
-    expect(requestBody.galleryData).not.toHaveProperty('sources');
-    expect(requestBody.galleryData).not.toHaveProperty('searchEntryPoint');
-    await expect(getWorldviewFeedback('worldview', gallery, 'vertex-model')).rejects.toThrow(
-      'HTTP 503',
+    expect(requestBody.gallerySample).toEqual({
+      galleryTitle: gallery.galleryTitle,
+      posts: [
+        {
+          title: post.title,
+          content: post.content,
+          comments: [{ author: comment.author, text: comment.text }],
+        },
+      ],
+    });
+    expect(requestBody).not.toHaveProperty('worldlineId');
+    expect(requestBody).not.toHaveProperty('galleryData');
+    await expect(
+      getWorldviewFeedback('worldview', gallery, 'vertex-model', undefined),
+    ).rejects.toThrow('HTTP 503');
+  });
+
+  it('rejects malformed successful JSON responses instead of trusting TypeScript assertions', async () => {
+    stubFetch(
+      Response.json({ post: { ...post, views: -1 }, warnings: [] }),
+      Response.json([{ ...comment, timestamp: 'not-a-timestamp' }]),
+      Response.json({ feedback: 42 }),
+      new Response('not-json', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
     );
+
+    for (const operation of [
+      () => addUserPost({ title: 'new', author: 'me', content: 'body' }, context, 'model'),
+      () => addFollowUpComments(post, [comment], context, 'model'),
+      () => getWorldviewFeedback('worldview', gallery, 'model', undefined),
+      () => getWorldviewFeedback('worldview', gallery, 'model', undefined),
+    ]) {
+      const error = await operation().catch(reason => reason as unknown);
+      expect(error).toBeInstanceOf(ApiError);
+      expect(error).toMatchObject({
+        status: 502,
+        code: 'INVALID_API_RESPONSE',
+        retryable: false,
+      });
+    }
   });
 });
 
@@ -164,7 +236,7 @@ describe('streamed gallery creation', () => {
       stage: 'grounding' as const,
     };
     const result = {
-      ...gallery,
+      ...initialGallery,
       sources: [{ title: 'source', uri: 'https://example.com' }],
       warnings: [duplicateWarning],
     };
@@ -180,7 +252,9 @@ describe('streamed gallery creation', () => {
     const onChunk = vi.fn();
     const onPhase = vi.fn();
 
-    await expect(createGalleryStreamed(context, onChunk, undefined, onPhase)).resolves.toEqual({
+    await expect(
+      createGalleryStreamed(requestContext, onChunk, undefined, onPhase),
+    ).resolves.toEqual({
       ...result,
       warnings: [duplicateWarning, uniqueWarning],
     });
@@ -193,9 +267,11 @@ describe('streamed gallery creation', () => {
         'Content-Type': 'application/json',
         Accept: 'application/x-ndjson',
       },
-      body: JSON.stringify(context),
+      body: JSON.stringify(requestContext),
       signal: undefined,
     });
+    const requestBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(requestBody).not.toHaveProperty('worldlineId');
   });
 
   it('uses an API error payload when the streaming request fails', async () => {
@@ -210,7 +286,9 @@ describe('streamed gallery creation', () => {
         { status: 429, headers: { 'Retry-After': '3' } },
       ),
     );
-    const error = await createGalleryStreamed(context, vi.fn()).catch(reason => reason as unknown);
+    const error = await createGalleryStreamed(requestContext, vi.fn()).catch(
+      reason => reason as unknown,
+    );
 
     expect(error).toBeInstanceOf(ApiError);
     expect(error).toMatchObject({
@@ -228,30 +306,34 @@ describe('streamed gallery creation', () => {
       new Response(null, { status: 200 }),
       ndjsonResponse([{ type: 'phase', phase: 'posts' }]),
     );
-    await expect(createGalleryStreamed(context, vi.fn())).rejects.toThrow();
-    await expect(createGalleryStreamed(context, vi.fn())).rejects.toThrow();
+    await expect(createGalleryStreamed(requestContext, vi.fn())).rejects.toThrow();
+    await expect(createGalleryStreamed(requestContext, vi.fn())).rejects.toThrow();
   });
 
   it('prioritizes an explicit stream error even if a result was also emitted', async () => {
     stubFetch(
       ndjsonResponse([
-        { type: 'result', data: gallery },
+        { type: 'result', data: initialGallery },
         {
           type: 'error',
           message: 'stream generation failed',
           code: 'UPSTREAM_ERROR',
           retryable: true,
           requestId: 'request-1',
+          retryAfterSeconds: 7,
         },
       ]),
     );
-    const error = await createGalleryStreamed(context, vi.fn()).catch(reason => reason as unknown);
+    const error = await createGalleryStreamed(requestContext, vi.fn()).catch(
+      reason => reason as unknown,
+    );
     expect(error).toBeInstanceOf(ApiError);
     expect(error).toMatchObject({
       message: 'stream generation failed',
       code: 'UPSTREAM_ERROR',
       retryable: true,
       requestId: 'request-1',
+      retryAfterSeconds: 7,
     });
   });
 });
@@ -297,9 +379,28 @@ describe('NDJSON transport boundaries', () => {
       {},
       { type: 'chunk', text: 12 },
       { type: 'phase', phase: 12 },
+      { type: 'phase', phase: 'posts' },
+      { type: 'phase', phase: 'unknown' },
+      { type: 'phase', phase: 'posts', progress: 101 },
       { type: 'warning', warning: { message: 'missing code' } },
       { type: 'error', message: 'bad', retryable: 'yes' },
+      { type: 'error', message: 'bad', code: 'BAD', retryable: false },
+      { type: 'error', message: 'bad', retryAfterSeconds: 61 },
       { type: 'result', data: { galleryTitle: 'x', posts: 'not-an-array' } },
+      { type: 'result', data: gallery },
+      {
+        type: 'result',
+        data: { galleryTitle: 'x', posts: [{ ...post, views: -1 }] },
+      },
+      {
+        type: 'result',
+        data: {
+          galleryTitle: 'x',
+          posts: [],
+          sources: [{ uri: 'http://example.test/source' }],
+        },
+      },
+      { type: 'chunk', text: 'x', unexpected: true },
       { type: 'unknown', text: 'x' },
     ]) {
       await expect(
@@ -315,7 +416,7 @@ describe('NDJSON transport boundaries', () => {
       streamFromText(
         `${JSON.stringify({
           type: 'result',
-          data: { galleryTitle: '테스트', posts: [], searchEntryPoint: { renderedContent } },
+          data: { ...initialGallery, searchEntryPoint: { renderedContent } },
         })}\n`,
       ),
       event => events.push(event),
@@ -332,8 +433,7 @@ describe('NDJSON transport boundaries', () => {
           `${JSON.stringify({
             type: 'result',
             data: {
-              galleryTitle: '테스트',
-              posts: [],
+              ...initialGallery,
               searchEntryPoint: { renderedContent: oversized },
             },
           })}\n`,

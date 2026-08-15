@@ -5,6 +5,7 @@ import {
   createFollowUpComments,
   createGallery,
   createUserPost,
+  createWorldviewFeedback,
   InvalidGroundingSearchEntryPointError,
   sanitizeGroundingSources,
   validateGroundingSearchEntryPoint,
@@ -12,6 +13,7 @@ import {
 import {
   MAX_COMMENT_OUTPUT_TOKENS,
   MAX_EVALUATION_OUTPUT_TOKENS,
+  MAX_FEEDBACK_OUTPUT_TOKENS,
   MAX_GALLERY_OUTPUT_TOKENS,
   generateComments,
   evaluatePost,
@@ -49,10 +51,31 @@ const post = (comments: Post['comments'] = []): Post => ({
   comments,
 });
 
+const generatedGalleryPayload = () => ({
+  galleryTitle: 'gallery',
+  posts: Array.from({ length: 5 }, (_, index) => ({
+    title: `title-${index}`,
+    author: `author-${index}`,
+    content: `content-${index}`,
+  })),
+});
+
+const generatedCommentsForRequest = (request: { config?: { responseSchema?: unknown } }) => {
+  const count = Number(
+    (request.config?.responseSchema as { minItems?: string } | undefined)?.minItems ?? 1,
+  );
+  return Array.from({ length: count }, (_, index) => ({
+    author: `reply-${index}`,
+    text: `comment-${index}`,
+    recommendations: 0,
+    nonRecommendations: 0,
+  }));
+};
+
 describe('gallery engine hardening', () => {
   it('repairs malformed structured responses exactly once', async () => {
     const evaluation = {
-      suggestedViews: 10,
+      suggestedViews: 100,
       suggestedRecommendations: 2,
       suggestedNonRecommendations: 1,
     };
@@ -85,7 +108,9 @@ describe('gallery engine hardening', () => {
       ),
     ).resolves.toEqual(evaluation);
     expect(evaluationGenerate).toHaveBeenCalledTimes(2);
-    expect(String(evaluationGenerate.mock.calls[1]?.[0]?.contents)).toContain('FORMAT REPAIR');
+    expect(String(evaluationGenerate.mock.calls[1]?.[0]?.config?.systemInstruction)).toContain(
+      'FORMAT RECOVERY',
+    );
 
     const commentsGenerate = vi
       .fn()
@@ -156,10 +181,7 @@ describe('gallery engine hardening', () => {
   });
 
   it('requires valid Search Suggestions whenever Google Search metadata is present', async () => {
-    const galleryPayload = {
-      galleryTitle: 'gallery',
-      posts: [{ title: 'title', author: 'author', content: 'content' }],
-    };
+    const galleryPayload = generatedGalleryPayload();
     const generateContent = vi.fn();
     const generateContentStream = vi.fn(async () =>
       (async function* () {
@@ -195,26 +217,23 @@ describe('gallery engine hardening', () => {
   });
 
   it('combines late Search Suggestions with HTTPS sources and preserves them exactly', async () => {
-    const galleryPayload = {
-      galleryTitle: 'gallery',
-      posts: [{ title: 'title', author: 'author', content: 'content' }],
-    };
-    const generateContent = vi.fn(async (request: { config?: { maxOutputTokens?: number } }) => {
-      if (request.config?.maxOutputTokens === MAX_EVALUATION_OUTPUT_TOKENS) {
+    const galleryPayload = generatedGalleryPayload();
+    const generateContent = vi.fn(
+      async (request: { config?: { maxOutputTokens?: number; responseSchema?: unknown } }) => {
+        if (request.config?.maxOutputTokens === MAX_EVALUATION_OUTPUT_TOKENS) {
+          return {
+            text: JSON.stringify({
+              suggestedViews: 100,
+              suggestedRecommendations: 2,
+              suggestedNonRecommendations: 1,
+            }),
+          };
+        }
         return {
-          text: JSON.stringify({
-            suggestedViews: 10,
-            suggestedRecommendations: 2,
-            suggestedNonRecommendations: 1,
-          }),
+          text: JSON.stringify(generatedCommentsForRequest(request)),
         };
-      }
-      return {
-        text: JSON.stringify([
-          { author: 'reply', text: 'comment', recommendations: 0, nonRecommendations: 0 },
-        ]),
-      };
-    });
+      },
+    );
     const generateContentStream = vi.fn(async () =>
       (async function* () {
         yield {
@@ -267,9 +286,9 @@ describe('gallery engine hardening', () => {
       nonRecommendations: 0,
     }));
 
-    await expect(createFollowUpComments(ai, post(comments), comments, context)).resolves.toEqual(
-      [],
-    );
+    await expect(
+      createFollowUpComments(ai, post(comments), comments.slice(-6), comments.length, context),
+    ).resolves.toEqual([]);
     expect(generateContent).not.toHaveBeenCalled();
   });
 
@@ -280,16 +299,14 @@ describe('gallery engine hardening', () => {
       if (configs.length === 1) {
         return {
           text: JSON.stringify({
-            suggestedViews: 10,
+            suggestedViews: 100,
             suggestedRecommendations: 2,
             suggestedNonRecommendations: 1,
           }),
         };
       }
       return {
-        text: JSON.stringify([
-          { author: 'reply', text: 'comment', recommendations: 0, nonRecommendations: 0 },
-        ]),
+        text: JSON.stringify(generatedCommentsForRequest(request)),
       };
     });
     const ai = { models: { generateContent } } as unknown as GoogleGenAI;
@@ -308,6 +325,90 @@ describe('gallery engine hardening', () => {
     expect(result.warnings).toEqual([]);
     expect(configs[0].maxOutputTokens).toBe(MAX_EVALUATION_OUTPUT_TOKENS);
     expect(configs[1].maxOutputTokens).toBe(MAX_COMMENT_OUTPUT_TOKENS);
+  });
+
+  it('replaces generated authors that impersonate the active user', async () => {
+    // This deliberately collides with the old fixed fallback name as well as
+    // the model output, so the replacement itself must be revalidated.
+    const activeIdentity = '익명1';
+    const galleryPayload = generatedGalleryPayload();
+    galleryPayload.posts[0]!.author = activeIdentity;
+    galleryPayload.posts[1]!.author = `(글쓴이) ${activeIdentity}`;
+    const generateContent = vi.fn(
+      async (request: { config?: { maxOutputTokens?: number; responseSchema?: unknown } }) => {
+        if (request.config?.maxOutputTokens === MAX_EVALUATION_OUTPUT_TOKENS) {
+          return {
+            text: JSON.stringify({
+              suggestedViews: 100,
+              suggestedRecommendations: 2,
+              suggestedNonRecommendations: 1,
+            }),
+          };
+        }
+        const comments = generatedCommentsForRequest(request).map(comment => ({
+          ...comment,
+          author: `(글쓴이) ${activeIdentity}`,
+        }));
+        return { text: JSON.stringify(comments) };
+      },
+    );
+    const generateContentStream = vi.fn(async () =>
+      (async function* () {
+        yield { text: JSON.stringify(galleryPayload), candidates: [] };
+      })(),
+    );
+    const ai = { models: { generateContent, generateContentStream } } as unknown as GoogleGenAI;
+
+    const result = await createGallery(
+      ai,
+      {
+        ...context,
+        userProfile: {
+          nicknameType: 'FIXED',
+          nickname: activeIdentity,
+          reputation: 50,
+        },
+      },
+      { onChunk: () => undefined, onPhase: () => undefined },
+    );
+
+    const withoutPostPrefix = (author: string) => author.replace(/^\(글쓴이\)\s*/, '');
+    expect(
+      result.posts.every(candidate => withoutPostPrefix(candidate.author) !== activeIdentity),
+    ).toBe(true);
+    expect(
+      result.posts.every(candidate =>
+        candidate.comments.every(comment => withoutPostPrefix(comment.author) !== activeIdentity),
+      ),
+    ).toBe(true);
+  });
+
+  it('forwards the bounded gallery sample without local-only worldline metadata', async () => {
+    const generateContent = vi.fn(
+      async (_request: {
+        model?: string;
+        contents?: unknown;
+        config?: { maxOutputTokens?: number; systemInstruction?: unknown };
+      }) => ({ text: '피드백 결과' }),
+    );
+    const ai = { models: { generateContent } } as unknown as GoogleGenAI;
+    const sample = {
+      galleryTitle: 'gallery',
+      posts: [{ title: 'title', content: 'content', comments: [{ author: 'a', text: 'c' }] }],
+    };
+
+    await expect(
+      createWorldviewFeedback(ai, 'custom worldview', sample, 'feedback-model', undefined),
+    ).resolves.toBe('피드백 결과');
+
+    const request = generateContent.mock.calls[0]?.[0];
+    expect(request?.model).toBe('feedback-model');
+    expect(request?.config?.maxOutputTokens).toBe(MAX_FEEDBACK_OUTPUT_TOKENS);
+    expect(String(request?.config?.systemInstruction)).toContain('Worldview Coach');
+    expect(String(request?.contents)).toContain('custom worldview');
+    expect(String(request?.contents)).toContain('content');
+    expect(String(request?.contents)).not.toContain('worldlineId');
+    expect(String(request?.config?.systemInstruction)).not.toContain('worldline');
   });
 
   it('preserves a user post when both non-fatal enrichment responses stay malformed', async () => {
@@ -370,17 +471,24 @@ describe('gallery engine hardening', () => {
   it('repairs a malformed initial gallery response once before enriching posts', async () => {
     const repairedGallery = {
       galleryTitle: 'repaired gallery',
-      posts: [{ title: 'title', author: 'author', content: 'content' }],
+      posts: Array.from({ length: 5 }, (_, index) => ({
+        title: `title-${index}`,
+        author: `author-${index}`,
+        content: `content-${index}`,
+      })),
     };
     const generateContent = vi.fn(
-      async (request: { contents?: unknown; config?: { maxOutputTokens?: number } }) => {
+      async (request: {
+        contents?: unknown;
+        config?: { maxOutputTokens?: number; systemInstruction?: unknown };
+      }) => {
         if (request.config?.maxOutputTokens === MAX_GALLERY_OUTPUT_TOKENS) {
           return { text: JSON.stringify(repairedGallery) };
         }
         if (request.config?.maxOutputTokens === MAX_EVALUATION_OUTPUT_TOKENS) {
           return {
             text: JSON.stringify({
-              suggestedViews: 10,
+              suggestedViews: 100,
               suggestedRecommendations: 2,
               suggestedNonRecommendations: 1,
             }),
@@ -406,12 +514,12 @@ describe('gallery engine hardening', () => {
     });
 
     expect(result.galleryTitle).toBe('repaired gallery');
-    expect(result.posts).toHaveLength(1);
+    expect(result.posts).toHaveLength(5);
     const repairCalls = generateContent.mock.calls.filter(
       call => call[0].config?.maxOutputTokens === MAX_GALLERY_OUTPUT_TOKENS,
     );
     expect(repairCalls).toHaveLength(1);
-    expect(String(repairCalls[0]?.[0].contents)).toContain('FORMAT REPAIR');
+    expect(String(repairCalls[0]?.[0].config?.systemInstruction)).toContain('FORMAT RECOVERY');
   });
 
   it('does not wait for an abort-ignoring sibling after a fatal enrichment failure', async () => {
@@ -426,10 +534,7 @@ describe('gallery engine hardening', () => {
         return new Promise<never>(() => undefined);
       },
     );
-    const galleryPayload = {
-      galleryTitle: 'gallery',
-      posts: [{ title: 'title', author: 'author', content: 'content' }],
-    };
+    const galleryPayload = generatedGalleryPayload();
     const generateContentStream = vi.fn(async () =>
       (async function* () {
         yield { text: JSON.stringify(galleryPayload), candidates: [] };
@@ -504,7 +609,7 @@ describe('gallery engine hardening', () => {
       if (request.config?.maxOutputTokens === MAX_EVALUATION_OUTPUT_TOKENS) {
         return {
           text: JSON.stringify({
-            suggestedViews: 10,
+            suggestedViews: 100,
             suggestedRecommendations: 2,
             suggestedNonRecommendations: 1,
           }),
@@ -545,7 +650,8 @@ describe('gallery engine hardening', () => {
 
     expect(evaluationCalls).toHaveLength(5);
     expect(commentCalls).toHaveLength(3);
-    expect(result.posts.every(candidate => candidate.views === 10)).toBe(true);
+    expect(result.posts.every(candidate => candidate.views === 100)).toBe(true);
+    expect(result.posts.every(candidate => candidate.comments.length > 0)).toBe(true);
     expect(warnings).not.toContain('POST_EVALUATION_FALLBACK');
     expect(warnings.filter(code => code === 'POST_COMMENTS_FALLBACK')).toHaveLength(5);
   });
@@ -554,20 +660,18 @@ describe('gallery engine hardening', () => {
     const generateContent = vi.fn(
       async (request: { contents?: unknown; config?: Record<string, unknown> }) => {
         const prompt = String(request.contents ?? '');
-        if (prompt.includes('EVALUATION LOGIC')) {
+        if (request.config?.maxOutputTokens === MAX_EVALUATION_OUTPUT_TOKENS) {
           if (prompt.includes('title-0')) return { text: '{}' };
           return {
             text: JSON.stringify({
-              suggestedViews: 10,
+              suggestedViews: 100,
               suggestedRecommendations: 2,
               suggestedNonRecommendations: 1,
             }),
           };
         }
         return {
-          text: JSON.stringify([
-            { author: 'reply', text: 'comment', recommendations: 0, nonRecommendations: 0 },
-          ]),
+          text: JSON.stringify(generatedCommentsForRequest(request)),
         };
       },
     );
@@ -609,7 +713,7 @@ describe('gallery engine hardening', () => {
 
     expect(result.posts).toHaveLength(5);
     expect(result.posts.some(candidate => candidate.views === 0)).toBe(true);
-    expect(result.posts.filter(candidate => candidate.views === 10)).toHaveLength(4);
+    expect(result.posts.filter(candidate => candidate.views === 100)).toHaveLength(4);
     expect(
       result.posts.some(candidate => candidate.views === 0 && candidate.comments.length > 0),
     ).toBe(true);

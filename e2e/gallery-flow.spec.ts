@@ -23,6 +23,17 @@ const mockGallery = {
       nonRecommendations: 1,
       comments: [],
     },
+    ...Array.from({ length: 4 }, (_, index) => ({
+      id: `post-${index + 2}`,
+      title: `추가 테스트 글 ${index + 2}`,
+      author: `테스터${index + 2}`,
+      timestamp: isoTimestamp,
+      content: `정확히 다섯 개 계약을 위한 mock 게시물 ${index + 2}입니다.`,
+      views: 20 + index,
+      recommendations: 2,
+      nonRecommendations: 0,
+      comments: [],
+    })),
   ],
 };
 
@@ -80,6 +91,7 @@ const submitMockGallery = async (page: Page) => {
   await page.getByLabel(/갤러리 주제/).fill('품질 테스트');
   await page.getByRole('button', { name: '갤러리 생성', exact: true }).click();
   await expect(page.getByRole('heading', { name: '품질 테스트 갤러리' })).toBeVisible();
+  await expect(page.getByText(/^세계선 WL-[0-9A-F-]+$/)).toBeVisible();
 };
 
 test.beforeEach(async ({ page }) => {

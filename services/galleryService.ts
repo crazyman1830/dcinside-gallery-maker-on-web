@@ -7,9 +7,19 @@ import type {
   GalleryContextParams,
   GalleryStreamEvent,
   GenerationWarning,
+  FollowUpPostContext,
   NewPostData,
   Post,
+  WorldviewFeedbackGallerySample,
 } from '../types';
+import { z } from 'zod';
+import {
+  commentSchema,
+  generationWarningSchema,
+  initialGalleryDataSchema,
+  MAX_GROUNDING_SEARCH_ENTRY_POINT_BYTES,
+  postSchema,
+} from '../schemas';
 import { ApiError, readApiError } from './apiError';
 export type {
   CreateGalleryParams,
@@ -20,150 +30,65 @@ export type {
 
 export const NDJSON_MAX_LINE_BYTES = 512 * 1024;
 export const NDJSON_MAX_TOTAL_BYTES = 1024 * 1024;
-export const GROUNDING_SEARCH_ENTRY_POINT_MAX_BYTES = 64 * 1024;
+export const GROUNDING_SEARCH_ENTRY_POINT_MAX_BYTES = MAX_GROUNDING_SEARCH_ENTRY_POINT_BYTES;
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
+const addUserPostResponseSchema = z
+  .object({
+    post: postSchema,
+    warnings: z.array(generationWarningSchema).max(100),
+  })
+  .strict();
+const followUpCommentsResponseSchema = z.array(commentSchema).max(30);
+const worldviewFeedbackResponseSchema = z.object({ feedback: z.string() }).strict();
 
-const hasOptionalString = (value: Record<string, unknown>, key: string): boolean =>
-  value[key] === undefined || typeof value[key] === 'string';
-
-const GENERATION_WARNING_STAGES = new Set(['evaluation', 'comments', 'grounding', 'storage']);
-
-const isComment = (value: unknown): value is Comment => {
-  if (!isRecord(value)) return false;
-  return (
-    ['id', 'author', 'text', 'timestamp'].every(key => typeof value[key] === 'string') &&
-    typeof value.recommendations === 'number' &&
-    Number.isFinite(value.recommendations) &&
-    typeof value.nonRecommendations === 'number' &&
-    Number.isFinite(value.nonRecommendations) &&
-    (value.voted === undefined ||
-      value.voted === null ||
-      value.voted === 'rec' ||
-      value.voted === 'nonrec') &&
-    (value.replyTo === undefined ||
-      (isRecord(value.replyTo) &&
-        typeof value.replyTo.commentId === 'string' &&
-        typeof value.replyTo.author === 'string'))
-  );
-};
-
-const isPost = (value: unknown): value is Post => {
-  if (!isRecord(value)) return false;
-  return (
-    ['id', 'title', 'author', 'timestamp', 'content'].every(
-      key => typeof value[key] === 'string',
-    ) &&
-    ['views', 'recommendations', 'nonRecommendations'].every(
-      key => typeof value[key] === 'number' && Number.isFinite(value[key]),
-    ) &&
-    Array.isArray(value.comments) &&
-    value.comments.every(isComment) &&
-    (value.isBestPost === undefined || typeof value.isBestPost === 'boolean') &&
-    (value.voted === undefined ||
-      value.voted === null ||
-      value.voted === 'rec' ||
-      value.voted === 'nonrec')
-  );
-};
-
-const isGenerationWarning = (value: unknown): value is GenerationWarning =>
-  isRecord(value) &&
-  typeof value.code === 'string' &&
-  typeof value.message === 'string' &&
-  (value.stage === undefined ||
-    (typeof value.stage === 'string' && GENERATION_WARNING_STAGES.has(value.stage))) &&
-  hasOptionalString(value, 'postId');
+const galleryStreamEventSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('chunk'), text: z.string() }).strict(),
+  z
+    .object({
+      type: z.literal('phase'),
+      phase: z.enum(['gallery', 'posts', 'complete']),
+      message: z.string().trim().min(1).max(500),
+      progress: z.number().int().min(0).max(100),
+    })
+    .strict(),
+  z.object({ type: z.literal('warning'), warning: generationWarningSchema }).strict(),
+  z.object({ type: z.literal('result'), data: initialGalleryDataSchema }).strict(),
+  z
+    .object({
+      type: z.literal('error'),
+      message: z.string().trim().min(1),
+      code: z.string().regex(/^[A-Z][A-Z0-9_]{1,63}$/),
+      retryable: z.boolean(),
+      requestId: z.string().trim().min(1),
+      retryAfterSeconds: z.number().int().min(0).max(60).optional(),
+    })
+    .strict(),
+]);
 
 const generationWarningKey = (warning: GenerationWarning): string =>
   [warning.code, warning.stage ?? '', warning.postId ?? '', warning.message].join('\u0000');
 
-const utf8ByteLength = (value: string): number => new TextEncoder().encode(value).byteLength;
-
-const isGalleryData = (value: unknown): value is GalleryData => {
-  if (!isRecord(value) || typeof value.galleryTitle !== 'string' || !Array.isArray(value.posts))
-    return false;
-  if (!value.posts.every(isPost)) return false;
-  if (
-    value.sources !== undefined &&
-    (!Array.isArray(value.sources) ||
-      !value.sources.every(
-        source =>
-          isRecord(source) &&
-          hasOptionalString(source, 'title') &&
-          hasOptionalString(source, 'uri'),
-      ))
-  )
-    return false;
-  if (
-    value.searchEntryPoint !== undefined &&
-    (!isRecord(value.searchEntryPoint) ||
-      Object.keys(value.searchEntryPoint).some(key => key !== 'renderedContent') ||
-      typeof value.searchEntryPoint.renderedContent !== 'string' ||
-      value.searchEntryPoint.renderedContent.length === 0 ||
-      utf8ByteLength(value.searchEntryPoint.renderedContent) >
-        GROUNDING_SEARCH_ENTRY_POINT_MAX_BYTES)
-  )
-    return false;
-  return (
-    value.warnings === undefined ||
-    (Array.isArray(value.warnings) && value.warnings.every(isGenerationWarning))
-  );
-};
-
 const parseGalleryStreamEvent = (value: unknown): GalleryStreamEvent => {
-  if (!isRecord(value) || typeof value.type !== 'string') {
+  const parsed = galleryStreamEventSchema.safeParse(value);
+  if (!parsed.success) {
     throw new Error('로컬 AI 서버가 올바르지 않은 스트림 이벤트를 반환했습니다.');
   }
-  switch (value.type) {
-    case 'chunk':
-      if (typeof value.text === 'string') return { type: 'chunk', text: value.text };
-      break;
-    case 'phase':
-      if (
-        typeof value.phase === 'string' &&
-        hasOptionalString(value, 'message') &&
-        (value.progress === undefined ||
-          (typeof value.progress === 'number' && Number.isFinite(value.progress)))
-      ) {
-        return {
-          type: 'phase',
-          phase: value.phase,
-          ...(typeof value.message === 'string' ? { message: value.message } : {}),
-          ...(typeof value.progress === 'number' ? { progress: value.progress } : {}),
-        };
-      }
-      break;
-    case 'warning':
-      if (isGenerationWarning(value.warning)) return { type: 'warning', warning: value.warning };
-      break;
-    case 'result':
-      if (isGalleryData(value.data)) return { type: 'result', data: value.data };
-      break;
-    case 'error':
-      if (
-        typeof value.message === 'string' &&
-        hasOptionalString(value, 'code') &&
-        hasOptionalString(value, 'requestId') &&
-        (value.retryable === undefined || typeof value.retryable === 'boolean')
-      ) {
-        return {
-          type: 'error',
-          message: value.message,
-          ...(typeof value.code === 'string' ? { code: value.code } : {}),
-          ...(typeof value.retryable === 'boolean' ? { retryable: value.retryable } : {}),
-          ...(typeof value.requestId === 'string' ? { requestId: value.requestId } : {}),
-        };
-      }
-      break;
-    default:
-      break;
-  }
-  throw new Error('로컬 AI 서버가 올바르지 않은 스트림 이벤트를 반환했습니다.');
+  return parsed.data;
 };
 
-const postJson = async <T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> => {
+const invalidApiResponse = (): ApiError =>
+  new ApiError('로컬 AI 서버 응답 형식이 올바르지 않습니다.', {
+    status: 502,
+    code: 'INVALID_API_RESPONSE',
+    retryable: false,
+  });
+
+const postJson = async <T>(
+  path: string,
+  body: unknown,
+  responseSchema: z.ZodType<T>,
+  signal?: AbortSignal,
+): Promise<T> => {
   const response = await fetch(path, {
     method: 'POST',
     cache: 'no-store',
@@ -172,7 +97,15 @@ const postJson = async <T>(path: string, body: unknown, signal?: AbortSignal): P
     signal,
   });
   if (!response.ok) throw await readApiError(response, '요청에 실패했습니다.');
-  return response.json() as Promise<T>;
+  let payload: unknown;
+  try {
+    payload = (await response.json()) as unknown;
+  } catch {
+    throw invalidApiResponse();
+  }
+  const parsed = responseSchema.safeParse(payload);
+  if (!parsed.success) throw invalidApiResponse();
+  return parsed.data;
 };
 
 export const parseNdjsonStream = async (
@@ -240,6 +173,25 @@ export const parseNdjsonStream = async (
   }
 };
 
+/** Serialize only fields in the provider-facing request contract. */
+const toAiRequestContext = (galleryContext: CreateGalleryParams): CreateGalleryParams => ({
+  topic: galleryContext.topic,
+  discussionContext: galleryContext.discussionContext,
+  worldviewValue: galleryContext.worldviewValue,
+  customWorldviewText: galleryContext.customWorldviewText,
+  worldviewEraValue: galleryContext.worldviewEraValue,
+  toxicityLevelValue: galleryContext.toxicityLevelValue,
+  anonymousNickRatioValue: galleryContext.anonymousNickRatioValue,
+  userSpecies: galleryContext.userSpecies,
+  userAffiliation: galleryContext.userAffiliation,
+  genderRatioValue: galleryContext.genderRatioValue,
+  ageRangeValue: galleryContext.ageRangeValue,
+  selectedProvider: galleryContext.selectedProvider,
+  selectedModel: galleryContext.selectedModel,
+  useSearch: galleryContext.useSearch,
+  userProfile: galleryContext.userProfile,
+});
+
 export const createGalleryStreamed = async (
   params: CreateGalleryParams,
   onChunk: (text: string) => void,
@@ -253,7 +205,7 @@ export const createGalleryStreamed = async (
       'Content-Type': 'application/json',
       Accept: 'application/x-ndjson',
     },
-    body: JSON.stringify(params),
+    body: JSON.stringify(toAiRequestContext(params)),
     signal,
   });
 
@@ -275,6 +227,7 @@ export const createGalleryStreamed = async (
           code: event.code,
           retryable: event.retryable,
           requestId: event.requestId,
+          retryAfterSeconds: event.retryAfterSeconds,
         });
       }
     },
@@ -307,8 +260,9 @@ export const addUserPost = async (
     '/api/ai/posts',
     {
       newPostData,
-      galleryContext: { ...galleryContext, selectedModel },
+      galleryContext: { ...toAiRequestContext(galleryContext), selectedModel },
     },
+    addUserPostResponseSchema,
     signal,
   );
 
@@ -322,33 +276,53 @@ export const addFollowUpComments = async (
   postJson<Comment[]>(
     '/api/ai/comments/follow-up',
     {
-      targetPost,
-      updatedComments,
-      galleryContext: { ...galleryContext, selectedModel },
+      targetPost: {
+        id: targetPost.id,
+        title: targetPost.title,
+        author: targetPost.author,
+        content: targetPost.content,
+      } satisfies FollowUpPostContext,
+      recentComments: updatedComments.slice(-6),
+      totalCommentCount: updatedComments.length,
+      galleryContext: { ...toAiRequestContext(galleryContext), selectedModel },
     },
+    followUpCommentsResponseSchema,
     signal,
   );
+
+const truncateForFeedback = (value: string, maximum: number): string =>
+  value.length <= maximum ? value : value.slice(0, maximum);
+
+export const buildWorldviewFeedbackGallerySample = (
+  galleryData: GalleryData,
+): WorldviewFeedbackGallerySample => ({
+  galleryTitle: galleryData.galleryTitle,
+  posts: galleryData.posts.slice(0, 5).map(post => ({
+    title: post.title,
+    content: truncateForFeedback(post.content, 1_200),
+    comments: post.comments.slice(-3).map(comment => ({
+      author: comment.author,
+      text: truncateForFeedback(comment.text, 500),
+    })),
+  })),
+});
 
 export const getWorldviewFeedback = async (
   customWorldviewText: string,
   galleryData: GalleryData,
   selectedModel: string,
-  selectedProvider?: AiProvider,
+  selectedProvider: AiProvider | undefined,
   signal?: AbortSignal,
 ): Promise<string> => {
-  const aiSafeGalleryData: GalleryData = {
-    galleryTitle: galleryData.galleryTitle,
-    posts: galleryData.posts,
-    ...(galleryData.warnings ? { warnings: galleryData.warnings } : {}),
-  };
   const payload = await postJson<{ feedback: string }>(
     '/api/ai/worldview-feedback',
     {
       customWorldviewText,
-      galleryData: aiSafeGalleryData,
+      gallerySample: buildWorldviewFeedbackGallerySample(galleryData),
       selectedModel,
       selectedProvider,
     },
+    worldviewFeedbackResponseSchema,
     signal,
   );
   return payload.feedback;

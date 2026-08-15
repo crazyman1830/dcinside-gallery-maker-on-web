@@ -3,10 +3,15 @@ import type { GroundingSource } from '../types';
 
 interface GalleryHeaderProps {
   galleryTitle: string;
+  worldlineId?: string;
   sources?: GroundingSource[];
 }
 
-export const GalleryHeader: React.FC<GalleryHeaderProps> = ({ galleryTitle, sources }) => {
+export const GalleryHeader: React.FC<GalleryHeaderProps> = ({
+  galleryTitle,
+  worldlineId,
+  sources,
+}) => {
   const safeSources = (sources ?? []).flatMap(source => {
     if (!source.uri) return [];
     try {
@@ -29,9 +34,26 @@ export const GalleryHeader: React.FC<GalleryHeaderProps> = ({ galleryTitle, sour
               {galleryTitle}
             </span>
           </h2>
-          <div className="hidden sm:flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-            <span className="text-xs font-medium text-slate-500">LIVE</span>
+          <div className="flex shrink-0 items-center gap-2">
+            {worldlineId && (
+              <details className="group relative">
+                <summary
+                  className="cursor-help list-none rounded-full border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-semibold text-violet-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:text-xs [&::-webkit-details-marker]:hidden"
+                  aria-label={`세계선 ${worldlineId}. 이 갤러리 생성본을 구분하는 로컬 멀티버스 번호입니다. 생성본 사이의 용어 차이는 평행세계의 변형으로 볼 수 있습니다.`}
+                >
+                  세계선 {worldlineId}
+                </summary>
+                <span
+                  role="note"
+                  className="absolute right-0 top-full z-50 mt-2 w-64 rounded-lg bg-slate-800 p-3 text-left text-xs font-normal text-white shadow-xl"
+                >
+                  이 갤러리 생성본을 구분하는 로컬 멀티버스 번호입니다. 같은 설정으로 다시 생성했을
+                  때 생기는 용어 차이는 평행세계의 변형으로 볼 수 있습니다.
+                </span>
+              </details>
+            )}
+            <span className="hidden h-2 w-2 rounded-full bg-green-500 animate-pulse sm:inline-block"></span>
+            <span className="hidden text-xs font-medium text-slate-500 sm:inline">LIVE</span>
           </div>
         </div>
 

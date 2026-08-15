@@ -1,11 +1,12 @@
 import { type GenerateContentResponse, type GoogleGenAI, type Schema, Type } from '@google/genai';
 import type {
   Comment,
-  GalleryData,
   GeminiCommentContent,
   GeminiEvaluationResponse,
   Post,
+  WorldviewFeedbackGallerySample,
 } from '../../types';
+import { NUMBER_OF_POSTS } from '../../constants';
 import {
   buildCommentGenerationPrompt,
   buildFollowUpCommentPrompt,
@@ -15,7 +16,12 @@ import {
   buildWorldviewFeedbackPrompt,
 } from '../../services/prompts/evaluation';
 import { buildGalleryGenerationPrompt } from '../../services/prompts/gallery';
-import { buildSystemInstruction } from '../../services/prompts/system';
+import {
+  buildCommentSystemInstruction,
+  buildEvaluationSystemInstruction,
+  buildFeedbackSystemInstruction,
+  buildGallerySystemInstruction,
+} from '../../services/prompts/system';
 import type { PromptContext } from '../../services/prompts/context';
 import {
   parseGeminiCommentArrayResponse,
@@ -52,6 +58,30 @@ export class ProviderRpcCapacityError extends Error {
   }
 }
 
+const raceProviderOperationWithAbort = async <T>(
+  operation: Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> => {
+  if (!signal) return operation;
+  if (signal.aborted) {
+    operation.catch(() => undefined);
+    throw signal.reason ?? new DOMException('The request was aborted.', 'AbortError');
+  }
+  let removeAbortListener = (): void => undefined;
+  const aborted = new Promise<never>((_resolve, reject) => {
+    const onAbort = () =>
+      reject(signal.reason ?? new DOMException('The request was aborted.', 'AbortError'));
+    removeAbortListener = () => signal.removeEventListener('abort', onAbort);
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+  operation.catch(() => undefined);
+  try {
+    return await Promise.race([operation, aborted]);
+  } finally {
+    removeAbortListener();
+  }
+};
+
 export class ProviderRpcLimiter {
   private active = 0;
 
@@ -76,10 +106,13 @@ export class ProviderRpcLimiter {
     };
   }
 
-  async run<T>(operation: () => Promise<T>): Promise<T> {
+  async run<T>(operation: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    if (signal?.aborted) {
+      throw signal.reason ?? new DOMException('The request was aborted.', 'AbortError');
+    }
     const release = this.acquire();
     try {
-      return await operation();
+      return await raceProviderOperationWithAbort(operation(), signal);
     } finally {
       release();
     }
@@ -160,7 +193,9 @@ export const withProviderRetry = async <T>(
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
     throwIfAborted(signal);
     try {
-      return await (limitConcurrency ? providerRpcLimiter.run(operation) : operation());
+      return await (limitConcurrency
+        ? providerRpcLimiter.run(operation, signal)
+        : raceProviderOperationWithAbort(operation(), signal));
     } catch (error) {
       lastError = error;
       if (!isRetryableProviderError(error) || attempt === MAX_RETRIES) throw error;
@@ -195,6 +230,11 @@ const withFormatRepair = async <T>(
   throw new MalformedAiResponseError(lastError);
 };
 
+const withFormatRecoveryInstruction = (systemInstruction: string, repair: boolean): string =>
+  repair
+    ? `${systemInstruction}\n\nFORMAT RECOVERY: A previous attempt did not satisfy the response schema. Follow the same task, but return only a complete value matching the schema. Do not add prose or Markdown fences.`
+    : systemInstruction;
+
 export const repairGalleryGeneration = async (
   ai: GoogleGenAI,
   context: PromptContext,
@@ -206,9 +246,12 @@ export const repairGalleryGeneration = async (
     () =>
       ai.models.generateContent({
         model,
-        contents: `${prompt}\n\nFORMAT REPAIR: The previous response was malformed. Return valid JSON only. Do not include prose or Markdown fences.`,
+        contents: prompt,
         config: {
-          systemInstruction: buildSystemInstruction(context.topic, context),
+          systemInstruction: withFormatRecoveryInstruction(
+            buildGallerySystemInstruction(context.topic, context),
+            true,
+          ),
           responseMimeType: 'application/json',
           responseSchema: galleryResponseSchema,
           maxOutputTokens: MAX_GALLERY_OUTPUT_TOKENS,
@@ -223,10 +266,20 @@ export const repairGalleryGeneration = async (
 const commentSchema: Schema = {
   type: Type.OBJECT,
   properties: {
-    author: { type: Type.STRING, description: 'The nickname of the commenter.' },
-    text: { type: Type.STRING, description: 'The content of the comment.' },
-    recommendations: { type: Type.INTEGER },
-    nonRecommendations: { type: Type.INTEGER },
+    author: {
+      type: Type.STRING,
+      minLength: '1',
+      maxLength: '64',
+      description: 'The nickname of the commenter.',
+    },
+    text: {
+      type: Type.STRING,
+      minLength: '1',
+      maxLength: '1000',
+      description: 'The content of the comment.',
+    },
+    recommendations: { type: Type.INTEGER, minimum: 0, maximum: 1_000_000_000 },
+    nonRecommendations: { type: Type.INTEGER, minimum: 0, maximum: 1_000_000_000 },
   },
   required: ['author', 'text', 'recommendations', 'nonRecommendations'],
 };
@@ -234,18 +287,20 @@ const commentSchema: Schema = {
 const galleryResponseSchema: Schema = {
   type: Type.OBJECT,
   properties: {
-    galleryTitle: { type: Type.STRING },
+    galleryTitle: { type: Type.STRING, minLength: '1', maxLength: '200' },
     posts: {
       type: Type.ARRAY,
       items: {
         type: Type.OBJECT,
         properties: {
-          title: { type: Type.STRING },
-          author: { type: Type.STRING },
-          content: { type: Type.STRING },
+          title: { type: Type.STRING, minLength: '1', maxLength: '200' },
+          author: { type: Type.STRING, minLength: '1', maxLength: '64' },
+          content: { type: Type.STRING, minLength: '1', maxLength: '10000' },
         },
         required: ['title', 'author', 'content'],
       },
+      minItems: String(NUMBER_OF_POSTS),
+      maxItems: String(NUMBER_OF_POSTS),
     },
   },
   required: ['galleryTitle', 'posts'],
@@ -254,17 +309,19 @@ const galleryResponseSchema: Schema = {
 const evaluationSchema: Schema = {
   type: Type.OBJECT,
   properties: {
-    suggestedViews: { type: Type.INTEGER },
-    suggestedRecommendations: { type: Type.INTEGER },
-    suggestedNonRecommendations: { type: Type.INTEGER },
+    suggestedViews: { type: Type.INTEGER, minimum: 20, maximum: 5_000 },
+    suggestedRecommendations: { type: Type.INTEGER, minimum: 0, maximum: 5_000 },
+    suggestedNonRecommendations: { type: Type.INTEGER, minimum: 0, maximum: 5_000 },
   },
   required: ['suggestedViews', 'suggestedRecommendations', 'suggestedNonRecommendations'],
 };
 
-const commentArraySchema: Schema = {
+const buildCommentArraySchema = (count: number): Schema => ({
   type: Type.ARRAY,
   items: commentSchema,
-};
+  minItems: String(count),
+  maxItems: String(count),
+});
 
 export interface GalleryStreamChunk {
   text: string;
@@ -284,12 +341,12 @@ export const streamGalleryGeneration = async (
   const { prompt } = buildGalleryGenerationPrompt(context);
   const config = context.useSearch
     ? {
-        systemInstruction: buildSystemInstruction(context.topic, context),
+        systemInstruction: buildGallerySystemInstruction(context.topic, context),
         tools: [{ googleSearch: {} }],
         abortSignal: signal,
       }
     : {
-        systemInstruction: buildSystemInstruction(context.topic, context),
+        systemInstruction: buildGallerySystemInstruction(context.topic, context),
         responseMimeType: 'application/json',
         responseSchema: galleryResponseSchema,
         abortSignal: signal,
@@ -301,6 +358,12 @@ export const streamGalleryGeneration = async (
     const { iterator, first, release } = await withProviderRetry(
       async () => {
         const release = providerRpcLimiter.acquire();
+        const releaseOnAbort = () => release();
+        signal?.addEventListener('abort', releaseOnAbort, { once: true });
+        const releaseAndCleanup = () => {
+          signal?.removeEventListener('abort', releaseOnAbort);
+          release();
+        };
         try {
           const providerStream = await ai.models.generateContentStream({
             model,
@@ -309,9 +372,9 @@ export const streamGalleryGeneration = async (
           });
           const streamIterator = providerStream[Symbol.asyncIterator]();
           const firstChunk = await streamIterator.next();
-          return { iterator: streamIterator, first: firstChunk, release };
+          return { iterator: streamIterator, first: firstChunk, release: releaseAndCleanup };
         } catch (error) {
-          release();
+          releaseAndCleanup();
           throw error;
         }
       },
@@ -396,13 +459,14 @@ export const generateComments = async (
         () =>
           ai.models.generateContent({
             model,
-            contents: repair
-              ? `${prompt}\n\nFORMAT REPAIR: Return valid JSON only. Do not include prose or Markdown fences.`
-              : prompt,
+            contents: prompt,
             config: {
               responseMimeType: 'application/json',
-              responseSchema: commentArraySchema,
-              systemInstruction: buildSystemInstruction(context.topic, context),
+              responseSchema: buildCommentArraySchema(numberOfCommentsToGenerate),
+              systemInstruction: withFormatRecoveryInstruction(
+                buildCommentSystemInstruction(context.topic, context),
+                repair,
+              ),
               maxOutputTokens: MAX_COMMENT_OUTPUT_TOKENS,
               abortSignal: signal,
             },
@@ -411,11 +475,13 @@ export const generateComments = async (
       );
       return response.text ?? '';
     },
-    text =>
-      parseGeminiCommentArrayResponse(text).slice(
-        0,
-        Math.min(numberOfCommentsToGenerate, maxComments),
-      ),
+    text => {
+      const comments = parseGeminiCommentArrayResponse(text);
+      if (comments.length !== numberOfCommentsToGenerate) {
+        throw new Error('AI comment count did not match the requested count.');
+      }
+      return comments;
+    },
     signal,
   );
 };
@@ -424,6 +490,7 @@ export const generateFollowUpComments = async (
   ai: GoogleGenAI,
   post: Pick<Post, 'title' | 'author' | 'content'>,
   existingComments: Comment[],
+  totalExistingCommentCount: number,
   context: PromptContext,
   minComments: number,
   maxComments: number,
@@ -436,6 +503,7 @@ export const generateFollowUpComments = async (
     context,
     minComments,
     maxComments,
+    totalExistingCommentCount,
   );
   return withFormatRepair(
     async repair => {
@@ -443,13 +511,14 @@ export const generateFollowUpComments = async (
         () =>
           ai.models.generateContent({
             model,
-            contents: repair
-              ? `${prompt}\n\nFORMAT REPAIR: Return valid JSON only. Do not include prose or Markdown fences.`
-              : prompt,
+            contents: prompt,
             config: {
               responseMimeType: 'application/json',
-              responseSchema: commentArraySchema,
-              systemInstruction: buildSystemInstruction(context.topic, context),
+              responseSchema: buildCommentArraySchema(numberOfCommentsToGenerate),
+              systemInstruction: withFormatRecoveryInstruction(
+                buildCommentSystemInstruction(context.topic, context),
+                repair,
+              ),
               maxOutputTokens: MAX_COMMENT_OUTPUT_TOKENS,
               abortSignal: signal,
             },
@@ -458,11 +527,13 @@ export const generateFollowUpComments = async (
       );
       return response.text ?? '';
     },
-    text =>
-      parseGeminiCommentArrayResponse(text).slice(
-        0,
-        Math.min(numberOfCommentsToGenerate, maxComments),
-      ),
+    text => {
+      const comments = parseGeminiCommentArrayResponse(text);
+      if (comments.length !== numberOfCommentsToGenerate) {
+        throw new Error('AI follow-up comment count did not match the requested count.');
+      }
+      return comments;
+    },
     signal,
   );
 };
@@ -481,13 +552,14 @@ export const evaluatePost = async (
         () =>
           ai.models.generateContent({
             model,
-            contents: repair
-              ? `${prompt}\n\nFORMAT REPAIR: Return valid JSON only. Do not include prose or Markdown fences.`
-              : prompt,
+            contents: prompt,
             config: {
               responseMimeType: 'application/json',
               responseSchema: evaluationSchema,
-              systemInstruction: buildSystemInstruction(context.topic, context),
+              systemInstruction: withFormatRecoveryInstruction(
+                buildEvaluationSystemInstruction(context.topic, context),
+                repair,
+              ),
               maxOutputTokens: MAX_EVALUATION_OUTPUT_TOKENS,
               abortSignal: signal,
             },
@@ -504,17 +576,21 @@ export const evaluatePost = async (
 export const generateFeedback = async (
   ai: GoogleGenAI,
   customWorldviewText: string,
-  galleryData: GalleryData,
+  gallerySample: WorldviewFeedbackGallerySample,
   model: string,
   signal?: AbortSignal,
 ): Promise<string> =>
   withProviderRetry(
     async () => {
-      const { prompt } = buildWorldviewFeedbackPrompt(customWorldviewText, galleryData);
+      const { prompt } = buildWorldviewFeedbackPrompt(customWorldviewText, gallerySample);
       const response = await ai.models.generateContent({
         model,
         contents: prompt,
-        config: { abortSignal: signal, maxOutputTokens: MAX_FEEDBACK_OUTPUT_TOKENS },
+        config: {
+          systemInstruction: buildFeedbackSystemInstruction(),
+          abortSignal: signal,
+          maxOutputTokens: MAX_FEEDBACK_OUTPUT_TOKENS,
+        },
       });
       return response.text || '피드백을 생성할 수 없습니다.';
     },
