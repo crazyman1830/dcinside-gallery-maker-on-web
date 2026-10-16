@@ -35,6 +35,37 @@ afterEach(() => {
 });
 
 describe('gallery form validation', () => {
+  it.each(['gemini', 'vertex'] as const)(
+    'defaults to Flash 3.8 and submits the selected Argon model with %s',
+    async provider => {
+      vi.mocked(getAiCredentialStatus).mockResolvedValue({
+        providers: { gemini: { configured: true }, vertex: { configured: true } },
+      });
+      const user = userEvent.setup();
+      const onSubmit = vi.fn();
+      render(<GalleryCreationForm isLoading={false} onSubmit={onSubmit} setFormError={vi.fn()} />);
+
+      await user.type(screen.getByLabelText(/갤러리 주제/), '우주 탐험');
+      await user.click(screen.getByRole('button', { name: '고급 설정' }));
+      await user.selectOptions(screen.getByLabelText('AI 공급자 선택'), provider);
+      expect(screen.getByLabelText('AI 모델 선택')).toHaveValue('gemini-3.8-flash');
+
+      await user.click(screen.getByRole('button', { name: '갤러리 생성' }));
+      expect(onSubmit).toHaveBeenLastCalledWith(
+        expect.objectContaining({ selectedProvider: provider, selectedModel: 'gemini-3.8-flash' }),
+      );
+
+      await user.selectOptions(
+        screen.getByLabelText('AI 모델 선택'),
+        screen.getByRole('option', { name: 'Gemini 4 Argon (최신)' }),
+      );
+      await user.click(screen.getByRole('button', { name: '갤러리 생성' }));
+      expect(onSubmit).toHaveBeenLastCalledWith(
+        expect.objectContaining({ selectedProvider: provider, selectedModel: 'gemini-4-argon' }),
+      );
+    },
+  );
+
   it('does not poll credential status after opening advanced settings', async () => {
     const user = userEvent.setup();
     let resolveAdvancedStatus!: (status: AiCredentialStatus) => void;

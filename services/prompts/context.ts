@@ -1,6 +1,7 @@
-import { UserProfile } from '../../types';
+import type { FixedNickname, GalleryContinuationContext, UserProfile } from '../../types';
 
 export interface PromptContext {
+  fixedNicknames?: FixedNickname[];
   topic: string;
   discussionContext: string;
   worldviewValue: string;
@@ -14,4 +15,6 @@ export interface PromptContext {
   ageRangeValue: string | string[];
   useSearch?: boolean;
   userProfile?: UserProfile;
+  continuityNotes?: string;
+  continuationContext?: GalleryContinuationContext;
 }

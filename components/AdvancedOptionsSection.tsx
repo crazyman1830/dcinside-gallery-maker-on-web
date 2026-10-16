@@ -80,7 +80,7 @@ export const AdvancedOptionsSection: React.FC<AdvancedOptionsSectionProps> = ({
           </div>
         </div>
         <p className="ml-1 mt-2 text-xs text-slate-600">
-          * 'Pro' 모델은 더 창의적이지만 생성 속도가 느릴 수 있습니다.
+          기본 모델은 Flash 3.8입니다. 최신 Argon 4와 Pro 모델은 생성 시간이 더 걸릴 수 있습니다.
         </p>
       </div>
 

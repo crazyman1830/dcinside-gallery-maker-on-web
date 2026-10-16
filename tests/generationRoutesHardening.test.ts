@@ -18,6 +18,7 @@ interface StreamCallbacks {
   onChunk: (text: string) => void | Promise<void>;
   onPhase: (phase: 'gallery' | 'posts' | 'complete', message: string) => void | Promise<void>;
   onWarning?: (warning: GenerationWarning) => void | Promise<void>;
+  onCheckpoint?: (data: GalleryData) => void | Promise<void>;
 }
 
 type CreateGallery = (
@@ -314,6 +315,43 @@ describe('generation route lifecycle', () => {
     ]);
   });
 
+  it('validates and forwards hidden checkpoints before a timeout event', async () => {
+    const checkpoint = {
+      ...initialGallery,
+      warnings: [
+        {
+          code: 'POST_COMMENTS_FALLBACK',
+          stage: 'comments' as const,
+          postId: initialGallery.posts[0].id,
+          message: 'pending comments',
+        },
+      ],
+    };
+    engine.createGallery.mockImplementationOnce(async (_client, _params, callbacks) => {
+      await callbacks.onCheckpoint?.(checkpoint);
+      throw Object.assign(new Error('timeout'), { status: 504, code: 'AI_TIMEOUT' });
+    });
+    const fixture = makeFixture();
+    const response = await request(fixture.app)
+      .post('/api/ai/gallery/stream')
+      .send(galleryContext)
+      .expect(200);
+    expect(parseEvents(response.text)).toEqual([
+      { type: 'checkpoint', data: checkpoint },
+      expect.objectContaining({ type: 'error', code: 'AI_TIMEOUT' }),
+    ]);
+    engine.createGallery.mockImplementationOnce(async (_client, _params, callbacks) => {
+      await callbacks.onCheckpoint?.({ galleryTitle: 'invalid', posts: [] });
+      return initialGallery;
+    });
+    const invalid = await request(fixture.app)
+      .post('/api/ai/gallery/stream')
+      .send(galleryContext)
+      .expect(200);
+    expect(parseEvents(invalid.text)).toEqual([
+      expect.objectContaining({ type: 'error', code: 'INVALID_API_RESPONSE' }),
+    ]);
+  });
   it('enforces per-line, total, and UTF-8 NDJSON byte budgets', async () => {
     engine.createGallery.mockImplementationOnce(async (_client, _params, callbacks) => {
       await callbacks.onChunk('x'.repeat(NDJSON_MAX_LINE_BYTES));
@@ -338,9 +376,8 @@ describe('generation route lifecycle', () => {
 
     engine.createGallery.mockImplementationOnce(async (_client, _params, callbacks) => {
       const chunk = 'x'.repeat(400 * 1_024);
-      await callbacks.onChunk(chunk);
-      await callbacks.onChunk(chunk);
-      await callbacks.onChunk(chunk);
+      for (let index = 0; index <= Math.ceil(NDJSON_MAX_TOTAL_BYTES / chunk.length); index += 1)
+        await callbacks.onChunk(chunk);
       return { galleryTitle: 'unreachable', posts: [] };
     });
     const totalFixture = makeFixture();

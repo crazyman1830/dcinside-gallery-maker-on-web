@@ -1,10 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ApiError } from '../services/apiError';
 import {
   type AsyncJob,
   type AsyncJobKind,
   Comment,
   type CreateGalleryInput,
+  type CreateGalleryRequest,
   type GalleryContextParams,
+  type GallerySessionV2,
+  type FixedNickname,
+  type ReactionFailure,
   UserProfile,
   type ReplyTarget,
 } from '../types';
@@ -13,6 +18,7 @@ import { createTimestamp, getFormattedErrorMessage, timestampToEpoch } from '../
 import { createWorldlineId } from '../utils/worldline';
 import { MAX_TOTAL_COMMENTS_PER_POST, POST_AUTHOR_PREFIX } from '../constants';
 import { useGalleryStorage } from './useGalleryStorage';
+import { fixedNicknamesSchema } from '../schemas';
 import { useUIState } from './useUIState';
 
 interface ExtendedCreateGalleryParams extends CreateGalleryInput {
@@ -23,9 +29,71 @@ const isAbortError = (error: unknown): boolean =>
   (error instanceof DOMException && error.name === 'AbortError') ||
   (error instanceof Error && error.name === 'AbortError');
 
+const makeReactionFailure = (error: unknown): ReactionFailure => ({
+  message: getFormattedErrorMessage(error).slice(0, 1000),
+  retryAt: Date.now() + (error instanceof ApiError ? (error.retryAfterSeconds ?? 0) * 1000 : 0),
+  reconnect: error instanceof ApiError && (error.status === 401 || error.status === 403),
+  retryable:
+    !(error instanceof ApiError) ||
+    error.retryable !== false ||
+    error.status === 401 ||
+    error.status === 403,
+  failedAt: createTimestamp(),
+});
+
 export const useGallery = () => {
   const storage = useGalleryStorage();
   const ui = useUIState();
+  const failedReactionList = useMemo(
+    () =>
+      (storage.galleryData?.posts ?? []).flatMap(post =>
+        post.comments.flatMap(comment =>
+          comment.reactionFailure
+            ? [{ ...comment.reactionFailure, postId: post.id, commentId: comment.id }]
+            : [],
+        ),
+      ),
+    [storage.galleryData],
+  );
+  // Keep the first failure available for existing callers; the UI lists every failed comment.
+  const failedReactions = useMemo(
+    () =>
+      Object.fromEntries(
+        [...failedReactionList].reverse().map(failure => [failure.postId, failure]),
+      ),
+    [failedReactionList],
+  );
+  const [generationFailure, setGenerationFailure] = useState<{
+    params: ExtendedCreateGalleryParams;
+    append: boolean;
+    stage: string;
+    message: string;
+    failedAt: string;
+  } | null>(null);
+  const setReactionFailure = useCallback(
+    (postId: string, commentId: string, failure: ReactionFailure) => {
+      storage.setGalleryData(previous =>
+        previous
+          ? {
+              ...previous,
+              posts: previous.posts.map(post =>
+                post.id === postId
+                  ? {
+                      ...post,
+                      comments: post.comments.map(comment =>
+                        comment.id === commentId
+                          ? { ...comment, reactionFailure: failure }
+                          : comment,
+                      ),
+                    }
+                  : post,
+              ),
+            }
+          : previous,
+      );
+    },
+    [storage],
+  );
 
   const nextRequestIdRef = useRef(0);
   const sessionRevisionRef = useRef(0);
@@ -72,20 +140,38 @@ export const useGallery = () => {
   );
 
   const createGallery = useCallback(
-    async (params: ExtendedCreateGalleryParams): Promise<boolean> => {
+    async (params: ExtendedCreateGalleryParams, append = false): Promise<boolean> => {
+      if (
+        append &&
+        (!storage.galleryData || !storage.galleryContext || storage.galleryContext.useSearch)
+      )
+        return false;
+      if (append && storage.galleryData!.posts.length > 195) {
+        ui.setError('갤러리에는 최대 200개의 글을 보관할 수 있습니다. 새 갤러리를 만들어주세요.');
+        return false;
+      }
       generationRequestRef.current?.abortController.abort();
       abortSessionRequests();
 
       const request = makeRequest('gallery');
       generationRequestRef.current = request;
       ui.resetForNewGeneration();
+      setGenerationFailure(null);
+      let failedStage = '게시글 생성';
 
       const isCurrent = () => generationRequestRef.current?.requestId === request.requestId;
 
       try {
-        const worldlineId = createWorldlineId();
-        const generationParams: CreateGalleryInput & { userProfile: UserProfile } = {
+        const worldlineId = append ? storage.galleryContext!.worldlineId : createWorldlineId();
+        const generationParams: CreateGalleryRequest & { userProfile: UserProfile } = {
           ...params,
+          ...(append
+            ? {
+                continuationContext: galleryService.buildGalleryContinuationContext(
+                  storage.galleryData!,
+                ),
+              }
+            : {}),
         };
         const data = await galleryService.createGalleryStreamed(
           generationParams,
@@ -98,6 +184,12 @@ export const useGallery = () => {
           request.abortController.signal,
           (phase, message, progress) => {
             if (!isCurrent()) return;
+            failedStage =
+              phase === 'gallery'
+                ? '게시글 생성'
+                : phase === 'posts'
+                  ? '반응 수치·댓글 생성'
+                  : '결과 수신';
             ui.setGenerationPhase(phase);
             if (message) ui.setGenerationMessage(message);
             if (typeof progress === 'number') ui.setGenerationProgress(progress);
@@ -109,8 +201,22 @@ export const useGallery = () => {
         // The previous session remains untouched until a complete result exists.
         // These synchronous state updates are batched into a single commit.
         sessionRevisionRef.current = storage.revision + 1;
-        const galleryContext: GalleryContextParams = { ...generationParams, worldlineId };
-        storage.replaceSession(data, galleryContext, generationParams.userProfile);
+        const galleryContext: GalleryContextParams = { ...params, worldlineId };
+        const finalData = append
+          ? {
+              ...storage.galleryData!,
+              posts: [
+                ...data.posts.filter(
+                  post => !storage.galleryData!.posts.some(existing => existing.id === post.id),
+                ),
+                ...storage.galleryData!.posts,
+              ],
+              warnings: [...(storage.galleryData!.warnings ?? []), ...(data.warnings ?? [])].slice(
+                -100,
+              ),
+            }
+          : data;
+        storage.replaceSession(finalData, galleryContext, generationParams.userProfile);
 
         ui.setWarningMessage(null);
         if (data.warnings?.length) {
@@ -130,6 +236,13 @@ export const useGallery = () => {
         } else {
           console.error(error);
           ui.setError(getFormattedErrorMessage(error));
+          setGenerationFailure({
+            params,
+            append,
+            stage: failedStage,
+            message: getFormattedErrorMessage(error),
+            failedAt: createTimestamp(),
+          });
         }
         return false;
       } finally {
@@ -151,9 +264,18 @@ export const useGallery = () => {
   }, [ui]);
 
   const saveUserPost = useCallback(
-    async (title: string, author: string, content: string): Promise<boolean> => {
+    async (
+      title: string,
+      author: string,
+      content: string,
+      onCreated?: (postId: string) => void,
+    ): Promise<boolean> => {
       if (!storage.galleryData || !storage.galleryContext) {
         ui.setError('오류: 갤러리 데이터 또는 컨텍스트가 없습니다. 글을 저장할 수 없습니다.');
+        return false;
+      }
+      if (storage.galleryData.posts.length >= 200) {
+        ui.setError('갤러리에는 최대 200개의 글을 작성할 수 있습니다.');
         return false;
       }
 
@@ -182,10 +304,17 @@ export const useGallery = () => {
         const postWarnings = postResponse.warnings;
 
         storage.setGalleryData(previous =>
-          previous ? { ...previous, posts: [finalNewPost, ...previous.posts] } : null,
+          previous
+            ? {
+                ...previous,
+                posts: [finalNewPost, ...previous.posts],
+                warnings: [...(previous.warnings ?? []), ...postWarnings].slice(-100),
+              }
+            : null,
         );
         ui.closeWriteModal();
         storage.setSelectedPostId(finalNewPost.id);
+        onCreated?.(finalNewPost.id);
         if (postWarnings.length > 0) {
           ui.setWarningMessage(
             `글은 등록되었지만 일부 AI 작업에 주의가 필요합니다: ${postWarnings[0].message}`,
@@ -217,6 +346,7 @@ export const useGallery = () => {
       commentAuthorInput: string,
       replyTo?: ReplyTarget,
     ) => {
+      if (commentRequestRef.current) return;
       if (!storage.galleryData || !storage.galleryContext) {
         ui.setError('갤러리 데이터 또는 컨텍스트가 없어 댓글을 추가할 수 없습니다.');
         return;
@@ -233,7 +363,6 @@ export const useGallery = () => {
         return;
       }
 
-      commentRequestRef.current?.abortController.abort();
       const request = makeRequest('follow-up');
       commentRequestRef.current = request;
       ui.setIsAddingComment(true);
@@ -321,6 +450,7 @@ export const useGallery = () => {
         if (!isAbortError(error) && commentRequestRef.current?.requestId === request.requestId) {
           console.error('Error generating follow-up comments:', error);
           ui.setWarningMessage('댓글은 등록되었지만 AI 응답 생성에 실패했습니다.');
+          setReactionFailure(postId, newUserComment.id, makeReactionFailure(error));
         }
       } finally {
         if (commentRequestRef.current?.requestId === request.requestId) {
@@ -330,8 +460,211 @@ export const useGallery = () => {
         }
       }
     },
-    [makeRequest, storage, ui],
+    [makeRequest, storage, ui, setReactionFailure],
   );
+
+  const retryReaction = useCallback(
+    async (postId: string, commentId?: string) => {
+      const failure = commentId
+        ? failedReactionList.find(item => item.postId === postId && item.commentId === commentId)
+        : failedReactions[postId];
+      const post = storage.galleryData?.posts.find(candidate => candidate.id === postId);
+      if (
+        !failure ||
+        !failure.retryable ||
+        !post ||
+        !storage.galleryContext ||
+        commentRequestRef.current
+      )
+        return;
+      if (Date.now() < failure.retryAt) {
+        ui.setWarningMessage('요청 제한 대기 시간이 지나면 다시 시도해주세요.');
+        return;
+      }
+      if (post.comments.length >= MAX_TOTAL_COMMENTS_PER_POST) {
+        ui.setWarningMessage('댓글 상한에 도달해 AI 응답을 추가할 수 없습니다.');
+        return;
+      }
+      const index = post.comments.findIndex(comment => comment.id === failure.commentId);
+      if (index === -1) return;
+      const request = makeRequest('follow-up');
+      commentRequestRef.current = request;
+      ui.setIsAddingComment(true);
+      ui.setError(null);
+      const isCurrent = () =>
+        commentRequestRef.current?.requestId === request.requestId &&
+        request.sessionRevision === sessionRevisionRef.current;
+      try {
+        const comments = await galleryService.addFollowUpComments(
+          post,
+          post.comments.slice(0, index + 1),
+          storage.galleryContext,
+          storage.galleryContext.selectedModel,
+          request.abortController.signal,
+          post.comments.length,
+        );
+        if (!isCurrent()) return;
+        storage.setGalleryData(previous =>
+          !previous || request.sessionRevision !== sessionRevisionRef.current
+            ? previous
+            : {
+                ...previous,
+                posts: previous.posts.map(current => {
+                  if (current.id !== postId) return current;
+                  const ids = new Set(current.comments.map(comment => comment.id));
+                  const added = comments.filter(comment => {
+                    if (ids.has(comment.id)) return false;
+                    ids.add(comment.id);
+                    return true;
+                  });
+                  return {
+                    ...current,
+                    comments: [
+                      ...current.comments.map(comment => {
+                        if (comment.id !== failure.commentId) return comment;
+                        const { reactionFailure: _failure, ...rest } = comment;
+                        return rest;
+                      }),
+                      ...added,
+                    ].slice(0, MAX_TOTAL_COMMENTS_PER_POST),
+                  };
+                }),
+              },
+        );
+        ui.setWarningMessage(null);
+        ui.setSuccessMessage('AI 반응을 다시 생성했습니다.');
+      } catch (error) {
+        if (!isCurrent() || isAbortError(error)) return;
+        setReactionFailure(postId, failure.commentId, makeReactionFailure(error));
+      } finally {
+        if (isCurrent()) {
+          commentRequestRef.current = null;
+          ui.setIsAddingComment(false);
+        }
+      }
+    },
+    [failedReactions, failedReactionList, makeRequest, storage, ui, setReactionFailure],
+  );
+
+  const retryFailedStage = useCallback(
+    async (postId: string, stage: 'evaluation' | 'comments'): Promise<boolean> => {
+      const original = storage.galleryData?.posts.find(post => post.id === postId);
+      if (
+        !original ||
+        !storage.galleryContext ||
+        commentRequestRef.current ||
+        generationRequestRef.current ||
+        postRequestRef.current
+      )
+        return false;
+      const request = makeRequest('follow-up');
+      commentRequestRef.current = request;
+      ui.setIsAddingComment(true);
+      ui.setError(null);
+      const isCurrent = () =>
+        commentRequestRef.current?.requestId === request.requestId &&
+        request.sessionRevision === sessionRevisionRef.current;
+      try {
+        const result = await galleryService.retryPostStage(
+          original,
+          stage,
+          storage.galleryContext,
+          request.abortController.signal,
+        );
+        if (!isCurrent()) return false;
+        storage.setGalleryData(previous => {
+          if (!previous || request.sessionRevision !== sessionRevisionRef.current) return previous;
+          return {
+            ...previous,
+            warnings: [
+              ...(previous.warnings ?? []).filter(
+                warning => warning.postId !== postId || warning.stage !== stage,
+              ),
+              ...result.warnings,
+            ].slice(-100),
+            posts: previous.posts.map(current => {
+              if (current.id !== postId || result.warnings.length) return current;
+              if (stage === 'evaluation')
+                return {
+                  ...current,
+                  views: result.post.views,
+                  recommendations: Math.max(
+                    0,
+                    result.post.recommendations +
+                      current.recommendations -
+                      original.recommendations,
+                  ),
+                  nonRecommendations: Math.max(
+                    0,
+                    result.post.nonRecommendations +
+                      current.nonRecommendations -
+                      original.nonRecommendations,
+                  ),
+                };
+              const originalIds = new Set(original.comments.map(comment => comment.id));
+              const returnedIds = new Set(result.post.comments.map(comment => comment.id));
+              const currentIds = new Set(current.comments.map(comment => comment.id));
+              return {
+                ...current,
+                comments: [
+                  ...current.comments.filter(
+                    comment => !originalIds.has(comment.id) || returnedIds.has(comment.id),
+                  ),
+                  ...result.post.comments.filter(comment => !currentIds.has(comment.id)),
+                ].slice(0, MAX_TOTAL_COMMENTS_PER_POST),
+              };
+            }),
+          };
+        });
+        if (result.warnings.length)
+          ui.setWarningMessage('해당 단계에서 다시 실패했습니다. 실패 기록을 확인해주세요.');
+        else {
+          ui.setWarningMessage(null);
+          ui.setSuccessMessage(
+            `${stage === 'evaluation' ? '반응 수치 평가' : '댓글 생성'} 단계를 복구했습니다.`,
+          );
+        }
+        return result.warnings.length === 0;
+      } catch (error) {
+        if (!isCurrent() || isAbortError(error)) return false;
+        const message = getFormattedErrorMessage(error);
+        storage.setGalleryData(previous =>
+          previous
+            ? {
+                ...previous,
+                warnings: (previous.warnings ?? []).map(warning =>
+                  warning.postId === postId && warning.stage === stage
+                    ? { ...warning, message }
+                    : warning,
+                ),
+              }
+            : previous,
+        );
+        ui.setWarningMessage(message);
+        return false;
+      } finally {
+        if (isCurrent()) {
+          commentRequestRef.current = null;
+          ui.setIsAddingComment(false);
+        }
+      }
+    },
+    [storage, ui, makeRequest],
+  );
+
+  const retryFailedStages = useCallback(async () => {
+    const failures = (storage.galleryData?.warnings ?? []).filter(
+      warning => warning.postId && (warning.stage === 'evaluation' || warning.stage === 'comments'),
+    );
+    const visited = new Set<string>();
+    for (const failure of failures) {
+      const key = `${failure.postId}:${failure.stage}`;
+      if (visited.has(key)) continue;
+      visited.add(key);
+      if (!(await retryFailedStage(failure.postId!, failure.stage as 'evaluation' | 'comments')))
+        break;
+    }
+  }, [storage.galleryData, retryFailedStage]);
 
   const fetchWorldviewFeedback = useCallback(async () => {
     if (
@@ -453,8 +786,67 @@ export const useGallery = () => {
     return storage.galleryData.posts.find(post => post.id === storage.selectedPostId) || null;
   }, [storage.selectedPostId, storage.galleryData]);
 
+  const openSession = useCallback(
+    (session: GallerySessionV2) => {
+      generationRequestRef.current?.abortController.abort();
+      generationRequestRef.current = null;
+      abortSessionRequests();
+      sessionRevisionRef.current = storage.revision + 1;
+      storage.replaceSession(session.gallery, session.context, session.profile);
+      setGenerationFailure(null);
+      ui.closeWriteModal();
+      ui.setIsLoading(false);
+      ui.setStreamingText(null);
+      ui.setError(null);
+      ui.setWarningMessage(null);
+      ui.setWorldviewFeedback(null);
+      ui.setSuccessMessage('보관한 갤러리를 열었습니다.');
+    },
+    [abortSessionRequests, storage, ui],
+  );
+
+  const saveContinuityNotes = useCallback(
+    (notes: string) => {
+      if (!storage.galleryContext || notes.length > 2000) return;
+      abortSessionRequests();
+      sessionRevisionRef.current = storage.revision + 1;
+      storage.setGalleryContext({ ...storage.galleryContext, continuityNotes: notes.trim() });
+      ui.setSuccessMessage('세계관 메모를 저장했습니다.');
+    },
+    [abortSessionRequests, storage, ui],
+  );
+
+  const saveFixedNicknames = useCallback(
+    (entries: FixedNickname[]) => {
+      const parsed = fixedNicknamesSchema.safeParse(entries);
+      if (!parsed.success || !storage.galleryContext) return;
+      if (
+        storage.currentUserProfile?.nicknameType === 'FIXED' &&
+        parsed.data.some(
+          entry =>
+            entry.nickname.toLocaleLowerCase() ===
+            storage.currentUserProfile!.nickname.toLocaleLowerCase(),
+        )
+      ) {
+        ui.setError('내 닉네임과 AI 고정닉 이름은 달라야 합니다.');
+        return;
+      }
+      abortSessionRequests();
+      sessionRevisionRef.current = storage.revision + 1;
+      storage.setGalleryContext({ ...storage.galleryContext, fixedNicknames: parsed.data });
+      ui.setSuccessMessage('고정닉 설정을 저장했습니다. 다음 생성부터 반영됩니다.');
+    },
+    [storage, ui, abortSessionRequests],
+  );
+
   return {
     galleryData: storage.galleryData,
+    revision: storage.revision,
+    openSession,
+    saveContinuityNotes,
+    saveFixedNicknames,
+    retryFailedStage,
+    retryFailedStages,
     galleryContext: storage.galleryContext,
     currentUserProfile: storage.currentUserProfile,
     storageWarning: storage.storageWarning,
@@ -481,6 +873,10 @@ export const useGallery = () => {
     closeWriteModal: ui.closeWriteModal,
     saveUserPost,
     addUserComment,
+    failedReactions,
+    failedReactionList,
+    generationFailure,
+    retryReaction,
     votePost,
     voteComment,
     fetchWorldviewFeedback,

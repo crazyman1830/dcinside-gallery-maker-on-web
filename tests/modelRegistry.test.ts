@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AI_MODELS, DEFAULT_MODEL_BY_PROVIDER, migrateModelForProvider } from '../constants';
+import { assertModelAllowed, getDefaultModel } from '../server/ai/provider';
 
 describe('provider model registry', () => {
   it('keeps provider defaults and model metadata internally consistent', () => {
@@ -13,13 +14,20 @@ describe('provider model registry', () => {
       }
     }
 
-    expect(DEFAULT_MODEL_BY_PROVIDER.vertex).toBe('gemini-3.7-flash');
-    expect(AI_MODELS.vertex).toContainEqual({
-      value: 'gemini-3.7-flash',
-      label: 'Gemini 3.7 Flash (기본·최신)',
-      releaseStage: 'stable',
-      supportsSearch: true,
-    });
+    for (const provider of ['gemini', 'vertex'] as const) {
+      expect(DEFAULT_MODEL_BY_PROVIDER[provider]).toBe('gemini-3.8-flash');
+      expect(getDefaultModel(provider)).toBe('gemini-3.8-flash');
+      expect(() => assertModelAllowed(provider, 'gemini-3.8-flash')).not.toThrow();
+      expect(() => assertModelAllowed(provider, 'gemini-4-argon')).not.toThrow();
+      expect(AI_MODELS[provider].filter(model => model.label.includes('최신'))).toEqual([
+        {
+          value: 'gemini-4-argon',
+          label: 'Gemini 4 Argon (최신)',
+          releaseStage: 'stable',
+          supportsSearch: true,
+        },
+      ]);
+    }
   });
 
   it('migrates retired, cross-provider, and current model IDs safely', () => {
@@ -31,5 +39,11 @@ describe('provider model registry', () => {
       DEFAULT_MODEL_BY_PROVIDER.vertex,
     );
     expect(migrateModelForProvider('gemini-3.7-flash', 'vertex')).toBe('gemini-3.7-flash');
+    for (const provider of ['gemini', 'vertex'] as const) {
+      expect(migrateModelForProvider(undefined, provider)).toBe('gemini-3.8-flash');
+      expect(migrateModelForProvider('unknown-model', provider)).toBe('gemini-3.8-flash');
+      expect(migrateModelForProvider('gemini-3.8-flash', provider)).toBe('gemini-3.8-flash');
+      expect(migrateModelForProvider('gemini-4-argon', provider)).toBe('gemini-4-argon');
+    }
   });
 });

@@ -84,7 +84,7 @@ describe('backend request lifecycle hardening', () => {
       .post('/api/ai/gallery/stream')
       .set('Host', LOCAL_HOST)
       .set('Content-Type', 'application/json')
-      .send(JSON.stringify({ topic: 'x'.repeat(20 * 1_024) }))
+      .send(JSON.stringify({ topic: 'x'.repeat(36 * 1_024) }))
       .expect(413);
     expect(response.body).toMatchObject({ code: 'PAYLOAD_TOO_LARGE', retryable: false });
   });

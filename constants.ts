@@ -18,14 +18,26 @@ export interface AiModelDefinition {
 export const AI_MODELS: Record<AiProvider, ReadonlyArray<AiModelDefinition>> = {
   gemini: [
     {
+      value: 'gemini-3.8-flash',
+      label: 'Gemini 3.8 Flash (기본·추천)',
+      releaseStage: 'stable',
+      supportsSearch: true,
+    },
+    {
+      value: 'gemini-4-argon',
+      label: 'Gemini 4 Argon (최신)',
+      releaseStage: 'stable',
+      supportsSearch: true,
+    },
+    {
       value: 'gemini-3.6-flash',
-      label: 'Gemini 3.6 Flash (최신)',
+      label: 'Gemini 3.6 Flash (이전 버전)',
       releaseStage: 'stable',
       supportsSearch: true,
     },
     {
       value: 'gemini-3.5-flash',
-      label: 'Gemini 3.5 Flash (추천)',
+      label: 'Gemini 3.5 Flash (이전 안정 버전)',
       releaseStage: 'stable',
       supportsSearch: true,
     },
@@ -44,8 +56,20 @@ export const AI_MODELS: Record<AiProvider, ReadonlyArray<AiModelDefinition>> = {
   ],
   vertex: [
     {
+      value: 'gemini-3.8-flash',
+      label: 'Gemini 3.8 Flash (기본·추천)',
+      releaseStage: 'stable',
+      supportsSearch: true,
+    },
+    {
+      value: 'gemini-4-argon',
+      label: 'Gemini 4 Argon (최신)',
+      releaseStage: 'stable',
+      supportsSearch: true,
+    },
+    {
       value: 'gemini-3.7-flash',
-      label: 'Gemini 3.7 Flash (기본·최신)',
+      label: 'Gemini 3.7 Flash (이전 버전)',
       releaseStage: 'stable',
       supportsSearch: true,
     },
@@ -77,8 +101,8 @@ export const AI_MODELS: Record<AiProvider, ReadonlyArray<AiModelDefinition>> = {
 };
 
 export const DEFAULT_MODEL_BY_PROVIDER: Record<AiProvider, string> = {
-  gemini: 'gemini-3.5-flash',
-  vertex: 'gemini-3.7-flash',
+  gemini: 'gemini-3.8-flash',
+  vertex: 'gemini-3.8-flash',
 };
 
 export const EVALUATION_MODEL_BY_PROVIDER: Record<AiProvider, string> = {

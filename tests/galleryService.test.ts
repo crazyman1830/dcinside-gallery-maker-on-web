@@ -11,6 +11,7 @@ import type {
 import {
   addFollowUpComments,
   addUserPost,
+  buildGalleryContinuationContext,
   createGalleryStreamed,
   GROUNDING_SEARCH_ENTRY_POINT_MAX_BYTES,
   getWorldviewFeedback,
@@ -223,6 +224,39 @@ describe('gallery API JSON wrappers', () => {
 });
 
 describe('streamed gallery creation', () => {
+  it('sends bounded continuation evidence separately from notes and local state', async () => {
+    const history: GalleryData = {
+      ...gallery,
+      posts: Array.from({ length: 8 }, (_, index) => ({
+        ...post,
+        id: `local-post-${index}`,
+        title: `past-${index}`,
+        content: `${index}${'가'.repeat(500)}`,
+        voted: 'rec',
+      })),
+      sources: [{ uri: 'https://example.test/source' }],
+      searchEntryPoint: { renderedContent: '<div>provider markup</div>' },
+    };
+    const continuationContext = buildGalleryContinuationContext(history);
+    expect(continuationContext.totalPostCount).toBe(8);
+    expect(continuationContext.recentPosts).toHaveLength(6);
+    expect(continuationContext.recentPosts[5]).toEqual({
+      title: 'past-5',
+      author: post.author,
+      contentExcerpt: `5${'가'.repeat(299)}`,
+    });
+    const fetchMock = stubFetch(ndjsonResponse([{ type: 'result', data: initialGallery }]));
+    const continuityNotes = '설'.repeat(2000);
+    await createGalleryStreamed({ ...context, continuityNotes, continuationContext }, vi.fn());
+    const requestBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(requestBody).toEqual({ ...requestContext, continuityNotes, continuationContext });
+    expect(requestBody).not.toHaveProperty('worldlineId');
+    expect(requestBody.continuationContext).not.toHaveProperty('sources');
+    expect(requestBody.continuationContext.recentPosts[0]).not.toHaveProperty('id');
+    expect(requestBody.continuationContext.recentPosts[0]).not.toHaveProperty('comments');
+    expect(history.posts[0].content).toHaveLength(501);
+  });
+
   it('dispatches progress callbacks and merges unique streamed warnings into the result', async () => {
     const duplicateWarning = {
       code: 'COMMENTS_PARTIAL',
@@ -473,5 +507,91 @@ describe('NDJSON transport boundaries', () => {
 
     await expect(parsing).rejects.toMatchObject({ name: 'AbortError' });
     expect(cancelled).toBe(true);
+  });
+});
+
+describe('hidden generation recovery checkpoints', () => {
+  it('keeps completed posts and evaluations after a terminal timeout, retrying only comments', async () => {
+    const checkpoint: GalleryData = {
+      ...initialGallery,
+      warnings: initialGallery.posts.map(item => ({
+        code: 'POST_COMMENTS_FALLBACK',
+        stage: 'comments',
+        postId: item.id,
+        message: '댓글 생성 실패',
+      })),
+    };
+    stubFetch(
+      ndjsonResponse([
+        { type: 'checkpoint', data: checkpoint },
+        {
+          type: 'error',
+          code: 'AI_TIMEOUT',
+          message: 'timeout',
+          retryable: true,
+          requestId: 'request-1',
+        },
+      ]),
+    );
+    const onChunk = vi.fn();
+    const recovered = await createGalleryStreamed(requestContext, onChunk);
+    expect(recovered.posts).toEqual(initialGallery.posts);
+    expect(recovered.warnings).toHaveLength(5);
+    expect(
+      recovered.warnings?.every(
+        warning => warning.stage === 'comments' && warning.message.includes('timeout'),
+      ),
+    ).toBe(true);
+    expect(onChunk).not.toHaveBeenCalled();
+  });
+
+  it('uses the last validated checkpoint when transport closes without a final result', async () => {
+    stubFetch(ndjsonResponse([{ type: 'checkpoint', data: initialGallery }]));
+    const recovered = await createGalleryStreamed(requestContext, vi.fn());
+    expect(recovered.posts).toEqual(initialGallery.posts);
+  });
+
+  it('discards hidden checkpoints on explicit cancellation', async () => {
+    const controller = new AbortController();
+    stubFetch(
+      ndjsonResponse([
+        { type: 'checkpoint', data: initialGallery },
+        { type: 'phase', phase: 'posts', message: 'working', progress: 60 },
+      ]),
+    );
+    await expect(
+      createGalleryStreamed(requestContext, vi.fn(), controller.signal, () => controller.abort()),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('does not recover or persist a search-mode checkpoint', async () => {
+    stubFetch(ndjsonResponse([{ type: 'checkpoint', data: initialGallery }]));
+    await expect(
+      createGalleryStreamed({ ...requestContext, useSearch: true }, vi.fn()),
+    ).rejects.toThrow('완료되기 전에');
+  });
+
+  it('strips local recovery metadata from both recent conversation and reply targets', async () => {
+    const target: Comment = {
+      ...comment,
+      reactionFailure: {
+        message: 'LOCAL_ERROR_ONLY',
+        retryAt: 0,
+        reconnect: false,
+        retryable: true,
+        failedAt: '2026-10-03T00:00:00.000Z',
+      },
+    };
+    const reply: Comment = {
+      ...target,
+      id: 'reply',
+      replyTo: { commentId: target.id, author: target.author },
+    };
+    const fetchMock = stubFetch(Response.json([]));
+    await addFollowUpComments(post, [target, reply], context, context.selectedModel);
+    const payload = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(payload.recentComments[0]).not.toHaveProperty('reactionFailure');
+    expect(payload.replyTargetComment).not.toHaveProperty('reactionFailure');
+    expect(JSON.stringify(payload)).not.toContain('LOCAL_ERROR_ONLY');
   });
 });

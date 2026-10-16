@@ -6,6 +6,7 @@ import { SEARCH_GROUNDING_RELEASE_ENABLED } from '../../constants';
 import {
   addUserPostRequestSchema,
   commentSchema,
+  createGalleryRequestSchema,
   createGalleryParamsSchema,
   followUpCommentsRequestSchema,
   generationWarningSchema,
@@ -18,6 +19,7 @@ import {
   createGallery,
   createUserPost,
   createWorldviewFeedback,
+  retryPostStage,
 } from '../galleryEngine';
 import { aiAdmissionLimiter, type AiAdmissionLimiter } from '../ai/admission';
 import {
@@ -44,7 +46,7 @@ export const POST_REQUEST_TIMEOUT_MS = 2 * 60 * 1_000;
 export const FOLLOW_UP_REQUEST_TIMEOUT_MS = 90 * 1_000;
 export const FEEDBACK_REQUEST_TIMEOUT_MS = 60 * 1_000;
 export const NDJSON_MAX_LINE_BYTES = 512 * 1_024;
-export const NDJSON_MAX_TOTAL_BYTES = 1_024 * 1_024;
+export const NDJSON_MAX_TOTAL_BYTES = 3 * 1_024 * 1_024;
 
 // Kept as a compatibility export for credential routes and existing callers.
 export const publicError = toPublicError;
@@ -88,6 +90,13 @@ const addUserPostResponseSchema = z
   .object({
     post: postSchema,
     warnings: z.array(generationWarningSchema).max(100),
+  })
+  .strict();
+const retryPostStageRequestSchema = z
+  .object({
+    post: postSchema,
+    stage: z.enum(['evaluation', 'comments']),
+    galleryContext: createGalleryParamsSchema,
   })
   .strict();
 const followUpCommentsResponseSchema = z.array(commentSchema).max(30);
@@ -200,7 +209,7 @@ export const createGenerationRouter = (dependencies: GenerationRouteDependencies
     let requestAbort: RequestAbort | undefined;
     const streamBudget: NdjsonBudget = { bytesWritten: 0 };
     try {
-      const params = parseOrThrow(createGalleryParamsSchema.safeParse(request.body));
+      const params = parseOrThrow(createGalleryRequestSchema.safeParse(request.body));
       assertSearchGroundingReleased(params.useSearch);
       dependencies.assertModelAllowed(params.selectedProvider, params.selectedModel);
       const sessionId = dependencies.getSessionId(request);
@@ -232,6 +241,18 @@ export const createGenerationRouter = (dependencies: GenerationRouteDependencies
                   requestAbort!.signal,
                   streamBudget,
                 ),
+              onCheckpoint: data =>
+                params.useSearch
+                  ? undefined
+                  : writeNdjson(
+                      response,
+                      {
+                        type: 'checkpoint',
+                        data: parseResponseOrThrow(initialGalleryDataSchema, data),
+                      },
+                      requestAbort!.signal,
+                      streamBudget,
+                    ),
               onWarning: warning =>
                 writeNdjson(
                   response,
@@ -330,6 +351,34 @@ export const createGenerationRouter = (dependencies: GenerationRouteDependencies
     }
   });
 
+  router.post('/posts/retry-stage', async (request, response) => {
+    let requestAbort: RequestAbort | undefined;
+    try {
+      const body = parseOrThrow(retryPostStageRequestSchema.safeParse(request.body));
+      assertSearchGroundingReleased(body.galleryContext.useSearch);
+      dependencies.assertModelAllowed(
+        body.galleryContext.selectedProvider,
+        body.galleryContext.selectedModel,
+      );
+      const sessionId = dependencies.getSessionId(request);
+      const result = await limiter.run(sessionId, async () => {
+        requestAbort = makeRequestAbort(request, response, postTimeout);
+        const client = await raceWithAbort(
+          Promise.resolve(dependencies.getClient(sessionId, body.galleryContext.selectedProvider)),
+          requestAbort.signal,
+        );
+        return raceWithAbort(
+          retryPostStage(client, body.post, body.stage, body.galleryContext, requestAbort.signal),
+          requestAbort.signal,
+        );
+      });
+      response.json(parseResponseOrThrow(addUserPostResponseSchema, result));
+    } catch (error) {
+      sendPublicError(response, error);
+    } finally {
+      requestAbort?.dispose();
+    }
+  });
   router.post('/comments/follow-up', async (request, response) => {
     let requestAbort: RequestAbort | undefined;
     try {
@@ -354,6 +403,7 @@ export const createGenerationRouter = (dependencies: GenerationRouteDependencies
             body.totalCommentCount,
             body.galleryContext,
             requestAbort.signal,
+            body.replyTargetComment,
           ),
           requestAbort.signal,
         );

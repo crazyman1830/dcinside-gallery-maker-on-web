@@ -262,6 +262,86 @@ afterEach(() => {
 });
 
 describe('useGallery gallery generation', () => {
+  it('appends new posts on the same worldline without changing old votes', async () => {
+    const previous = structuredClone(storage.galleryData);
+    const generated = makeGallery(makePost('new-post'));
+    vi.mocked(galleryService.createGalleryStreamed).mockResolvedValueOnce(generated);
+    const { result } = renderGalleryHook();
+    await act(async () => {
+      expect(
+        await result.current.createGallery({ ...requestContext, userProfile: profile }, true),
+      ).toBe(true);
+    });
+    expect(storage.galleryContext?.worldlineId).toBe(context.worldlineId);
+    expect(storage.galleryData?.posts).toEqual([...generated.posts, ...previous!.posts]);
+    const request = vi.mocked(galleryService.createGalleryStreamed).mock.calls[0][0];
+    expect(request.continuityNotes).toBeUndefined();
+    expect(request.continuationContext).toEqual({
+      galleryTitle: previous!.galleryTitle,
+      totalPostCount: previous!.posts.length,
+      recentPosts: previous!.posts.map(post => ({
+        title: post.title,
+        author: post.author,
+        contentExcerpt: post.content,
+      })),
+    });
+    expect(storage.galleryContext?.continuityNotes).toBeUndefined();
+    expect(storage.galleryContext).not.toHaveProperty('continuationContext');
+  });
+
+  it('preserves long user notes separately from all six continuation samples', async () => {
+    const notes = `${'설'.repeat(1993)}끝까지 보존`;
+    storage.galleryData!.posts = Array.from({ length: 10 }, (_, index) =>
+      makePost(`existing-${index}`, {
+        title: `${index}${'제'.repeat(199)}`,
+        content: `${index}${'본'.repeat(1000)}`,
+      }),
+    );
+    vi.mocked(galleryService.createGalleryStreamed).mockResolvedValueOnce(
+      makeGallery(makePost('new-post')),
+    );
+    const { result } = renderGalleryHook();
+    await act(async () => {
+      expect(
+        await result.current.createGallery(
+          { ...requestContext, userProfile: profile, continuityNotes: notes },
+          true,
+        ),
+      ).toBe(true);
+    });
+
+    const request = vi.mocked(galleryService.createGalleryStreamed).mock.calls[0][0];
+    expect(request.continuityNotes).toBe(notes);
+    expect(request.continuationContext?.totalPostCount).toBe(10);
+    expect(request.continuationContext?.recentPosts).toHaveLength(6);
+    expect(request.continuationContext?.recentPosts[5]).toEqual({
+      title: `5${'제'.repeat(199)}`,
+      author: 'author-existing-5',
+      contentExcerpt: `5${'본'.repeat(299)}`,
+    });
+    expect(storage.galleryContext?.continuityNotes).toBe(notes);
+    expect(storage.galleryContext).not.toHaveProperty('continuationContext');
+  });
+
+  it('does not start continuation above the post limit or for search-based galleries', async () => {
+    storage.galleryData = {
+      galleryTitle: 'full',
+      posts: Array.from({ length: 196 }, (_, index) => makePost(String(index))),
+    };
+    const { result } = renderGalleryHook();
+    await act(async () => {
+      expect(
+        await result.current.createGallery({ ...requestContext, userProfile: profile }, true),
+      ).toBe(false);
+    });
+    storage.galleryContext!.useSearch = true;
+    await act(async () => {
+      expect(
+        await result.current.createGallery({ ...requestContext, userProfile: profile }, true),
+      ).toBe(false);
+    });
+    expect(galleryService.createGalleryStreamed).not.toHaveBeenCalled();
+  });
   it('keeps the old session until a complete result atomically replaces it', async () => {
     const previousGallery = storage.galleryData;
     const warning: GenerationWarning = {
@@ -484,6 +564,76 @@ describe('useGallery comments', () => {
 });
 
 describe('useGallery feedback and local actions', () => {
+  it('coalesces retry clicks and preserves a single user comment with current votes', async () => {
+    vi.mocked(galleryService.addFollowUpComments).mockRejectedValueOnce(
+      new Error('temporary failure'),
+    );
+    const { result, rerender } = renderGalleryHook();
+    await act(async () => {
+      await result.current.addUserComment('post-1', 'retry me', 'tester');
+    });
+    rerender();
+    const userComment = storage.galleryData!.posts[0].comments[0];
+    expect(result.current.failedReactions['post-1'].commentId).toBe(userComment.id);
+    const pending = makeDeferred<Comment[]>();
+    vi.mocked(galleryService.addFollowUpComments).mockReturnValueOnce(pending.promise);
+    let retry!: Promise<void>;
+    act(() => {
+      retry = result.current.retryReaction('post-1');
+    });
+    await act(async () => {
+      await result.current.retryReaction('post-1');
+    });
+    expect(galleryService.addFollowUpComments).toHaveBeenCalledTimes(2);
+    act(() => result.current.voteComment('post-1', userComment.id, 'rec', 4, 0));
+    await act(async () => {
+      pending.resolve([makeComment('ai-retry'), makeComment('ai-retry')]);
+      await retry;
+    });
+    expect(storage.galleryData!.posts[0].comments).toHaveLength(2);
+    expect(storage.galleryData!.posts[0].comments[0]).toMatchObject({
+      id: userComment.id,
+      recommendations: 4,
+    });
+    rerender();
+    expect(result.current.failedReactions).toEqual({});
+  });
+
+  it('ignores a retry result after opening another stored worldline', async () => {
+    vi.mocked(galleryService.addFollowUpComments).mockRejectedValueOnce(
+      new Error('temporary failure'),
+    );
+    const { result, rerender } = renderGalleryHook();
+    await act(async () => {
+      await result.current.addUserComment('post-1', 'retry me', 'tester');
+    });
+    rerender();
+    const pending = makeDeferred<Comment[]>();
+    vi.mocked(galleryService.addFollowUpComments).mockReturnValueOnce(pending.promise);
+    let retry!: Promise<void>;
+    act(() => {
+      retry = result.current.retryReaction('post-1');
+    });
+    const restored = makeGallery(makePost('restored-post'));
+    act(() =>
+      result.current.openSession({
+        version: 2,
+        revision: 1,
+        savedAt: '2026-09-07T00:00:00.000Z',
+        gallery: restored,
+        context: { ...context, worldlineId: 'WL-AAAA-BBBB-CCCC' },
+        profile,
+      }),
+    );
+    await act(async () => {
+      pending.resolve([makeComment('obsolete')]);
+      await retry;
+    });
+    expect(storage.galleryData).toEqual(restored);
+    rerender();
+    expect(result.current.failedReactions).toEqual({});
+    expect(ui.isAddingComment).toBe(false);
+  });
   it('handles worldview feedback success, failure, and eligibility', async () => {
     storage.selectedPostId = 'post-1';
     vi.mocked(galleryService.getWorldviewFeedback)

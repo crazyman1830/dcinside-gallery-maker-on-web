@@ -5,6 +5,7 @@ import React, {
   useCallback,
   useMemo,
   useEffect,
+  useRef,
   ReactNode,
 } from 'react';
 import {
@@ -25,17 +26,25 @@ import {
   CUSTOM_WORLDVIEW_VALUE,
   MAX_CUSTOM_WORLDVIEW_LENGTH,
 } from '../formOptions';
-import { AiProvider, GalleryFormSettings, PresetContentSettings, UserNicknameType } from '../types';
+import {
+  AiProvider,
+  FixedNickname,
+  GalleryFormSettings,
+  PresetContentSettings,
+  UserNicknameType,
+} from '../types';
 import {
   AI_MODELS,
   DEFAULT_AI_PROVIDER,
   DEFAULT_MODEL_BY_PROVIDER,
   SEARCH_GROUNDING_RELEASE_ENABLED,
 } from '../constants';
+import { fixedNicknamesSchema } from '../schemas';
 import { generateRandomIp } from '../utils/common';
 import { getPresetContentSettings } from '../services/presetService';
 
 export interface GalleryFormValidationErrors {
+  fixedNicknames?: string;
   topic?: string;
   discussionContext?: string;
   customWorldviewText?: string;
@@ -46,6 +55,8 @@ export interface GalleryFormValidationErrors {
 }
 
 interface GalleryFormContextType {
+  fixedNicknames: FixedNickname[];
+  setFixedNicknames: (entries: FixedNickname[]) => void;
   topic: string;
   setTopic: (v: string) => void;
   discussionContext: string;
@@ -115,6 +126,7 @@ const GalleryFormContext = createContext<GalleryFormContextType | undefined>(und
 interface ProviderProps {
   children: ReactNode;
   initialState?: Partial<GalleryFormSettings>;
+  sessionFixedNicknames?: FixedNickname[];
 }
 
 const getValidProvider = (provider?: AiProvider): AiProvider =>
@@ -125,7 +137,20 @@ const getValidModel = (provider: AiProvider, model?: string): string =>
     ? model
     : DEFAULT_MODEL_BY_PROVIDER[provider];
 
-export const GalleryFormProvider: React.FC<ProviderProps> = ({ children, initialState }) => {
+export const GalleryFormProvider: React.FC<ProviderProps> = ({
+  children,
+  initialState,
+  sessionFixedNicknames,
+}) => {
+  const [fixedNicknames, setFixedNicknames] = useState<FixedNickname[]>(
+    initialState?.fixedNicknames ?? [],
+  );
+  const previousSessionNicknames = useRef(sessionFixedNicknames);
+  useEffect(() => {
+    if (previousSessionNicknames.current !== sessionFixedNicknames && sessionFixedNicknames)
+      setFixedNicknames(sessionFixedNicknames);
+    previousSessionNicknames.current = sessionFixedNicknames;
+  }, [sessionFixedNicknames]);
   const [topic, setTopic] = useState<string>(initialState?.topic || '');
   const [discussionContext, setDiscussionContext] = useState<string>(
     initialState?.discussionContext || '',
@@ -273,6 +298,15 @@ export const GalleryFormProvider: React.FC<ProviderProps> = ({ children, initial
 
   const validateForm = useCallback(() => {
     const newErrors: GalleryFormValidationErrors = {};
+    if (!fixedNicknamesSchema.safeParse(fixedNicknames).success)
+      newErrors.fixedNicknames = '고정닉 설정을 확인해주세요.';
+    if (
+      userNicknameType === 'FIXED' &&
+      fixedNicknames.some(
+        entry => entry.nickname.toLocaleLowerCase() === fixedNickname.trim().toLocaleLowerCase(),
+      )
+    )
+      newErrors.fixedNicknames = '내 닉네임과 AI 고정닉 이름은 달라야 합니다.';
     if (!topic.trim()) newErrors.topic = '주제를 입력해주세요.';
     else if (topic.length > 20) newErrors.topic = '갤러리 주제는 20자 이내로 입력해주세요.';
 
@@ -303,6 +337,7 @@ export const GalleryFormProvider: React.FC<ProviderProps> = ({ children, initial
     setErrors(newErrors);
     return newErrors;
   }, [
+    fixedNicknames,
     topic,
     discussionContext,
     userSpecies,
@@ -322,6 +357,7 @@ export const GalleryFormProvider: React.FC<ProviderProps> = ({ children, initial
 
   const applyPreset = useCallback((settings: PresetContentSettings) => {
     const content = getPresetContentSettings(settings);
+    setFixedNicknames(content.fixedNicknames ?? []);
     setTopic(content.topic);
     setDiscussionContext(content.discussionContext);
     setSelectedWorldview(content.selectedWorldview);
@@ -343,6 +379,7 @@ export const GalleryFormProvider: React.FC<ProviderProps> = ({ children, initial
 
   const getCurrentSettings = useCallback((): GalleryFormSettings => {
     return {
+      fixedNicknames,
       topic,
       discussionContext,
       selectedWorldview,
@@ -364,6 +401,7 @@ export const GalleryFormProvider: React.FC<ProviderProps> = ({ children, initial
       userReputation,
     };
   }, [
+    fixedNicknames,
     topic,
     discussionContext,
     selectedWorldview,
@@ -386,6 +424,8 @@ export const GalleryFormProvider: React.FC<ProviderProps> = ({ children, initial
   ]);
 
   const value = {
+    fixedNicknames,
+    setFixedNicknames,
     topic,
     setTopic,
     discussionContext,

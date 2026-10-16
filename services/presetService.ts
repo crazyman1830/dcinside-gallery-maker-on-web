@@ -1,5 +1,7 @@
 import type { GalleryFormSettings, Preset, PresetContentSettings } from '../types';
 
+import { fixedNicknamesSchema } from '../schemas';
+
 export type { PresetContentSettings } from '../types';
 
 export const PRESET_STORAGE_KEY = 'dcgm.presets.v2';
@@ -87,6 +89,9 @@ const normalizePreset = (value: unknown): Preset | null => {
   const strings = raw as Record<(typeof requiredStrings)[number], string>;
 
   const settings: PresetContentSettings = {
+    ...(fixedNicknamesSchema.safeParse(raw.fixedNicknames).success
+      ? { fixedNicknames: fixedNicknamesSchema.parse(raw.fixedNicknames) }
+      : {}),
     topic: strings.topic.slice(0, 20),
     discussionContext: strings.discussionContext.slice(0, 500),
     selectedWorldview:

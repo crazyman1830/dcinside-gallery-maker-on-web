@@ -7,6 +7,60 @@ import {
 
 const MALFORMED_PREFIX = 'AI 응답 형식이 올바르지 않습니다';
 
+export interface AiResponseIssue {
+  path: string;
+  code: 'invalid_json' | 'invalid_type' | 'too_small' | 'too_big' | 'constraint' | 'count';
+  expectedCount?: number;
+}
+
+/** Safe diagnostics only: never carry provider text or validation messages. */
+export class AiResponseValidationError extends Error {
+  constructor(
+    message: string,
+    readonly issues: AiResponseIssue[],
+  ) {
+    super(message);
+    this.name = 'AiResponseValidationError';
+  }
+}
+
+const responseFields = new Set([
+  'galleryTitle',
+  'posts',
+  'title',
+  'author',
+  'content',
+  'comments',
+  'text',
+  'recommendations',
+  'nonRecommendations',
+  'suggestedViews',
+  'suggestedRecommendations',
+  'suggestedNonRecommendations',
+]);
+
+const schemaError = (
+  message: string,
+  issues: ReadonlyArray<{ code: string; path: readonly PropertyKey[] }>,
+): AiResponseValidationError =>
+  new AiResponseValidationError(
+    message,
+    issues.slice(0, 6).map(issue => ({
+      path: issue.path.reduce<string>((path, segment) => {
+        if (typeof segment === 'number' && Number.isSafeInteger(segment) && segment >= 0) {
+          return `${path}[${segment}]`;
+        }
+        return typeof segment === 'string' && responseFields.has(segment)
+          ? `${path}.${segment}`
+          : path;
+      }, '$'),
+      code:
+        issue.code === 'invalid_type' || issue.code === 'too_small' || issue.code === 'too_big'
+          ? issue.code
+          : 'constraint',
+    })),
+  );
+
 /** Removes JavaScript-style comments without touching comment markers inside strings. */
 export const stripJsonComments = (input: string): string => {
   let result = '';
@@ -106,7 +160,9 @@ export const extractJsonString = (responseText: string): string => {
       }
     }
   }
-  throw new Error(`${MALFORMED_PREFIX}: JSON 객체나 배열을 찾지 못했습니다.`);
+  throw new AiResponseValidationError(`${MALFORMED_PREFIX}: JSON 객체나 배열을 찾지 못했습니다.`, [
+    { path: '$', code: 'invalid_json' },
+  ]);
 };
 
 export function parseProtectedJson<T>(
@@ -152,7 +208,10 @@ const parseUnknownJson = (responseText: string): unknown => {
 export function parseGeminiResponse(responseText: string): GeminiResponseData {
   const result = geminiResponseDataSchema.safeParse(parseUnknownJson(responseText));
   if (!result.success) {
-    throw new Error(`${MALFORMED_PREFIX}: 갤러리 데이터 구조가 일치하지 않습니다.`);
+    throw schemaError(
+      `${MALFORMED_PREFIX}: 갤러리 데이터 구조가 일치하지 않습니다.`,
+      result.error.issues,
+    );
   }
   return result.data;
 }
@@ -163,10 +222,15 @@ export function parseGeminiCommentArrayResponse(responseText: string): GeminiCom
   if (Array.isArray(raw)) comments = raw;
   else if (raw && typeof raw === 'object' && 'comments' in raw) comments = raw.comments;
   else if (raw && typeof raw === 'object' && 'replies' in raw) comments = raw.replies;
-  else throw new Error(`${MALFORMED_PREFIX}: 댓글 배열을 찾지 못했습니다.`);
+  else
+    throw new AiResponseValidationError(`${MALFORMED_PREFIX}: 댓글 배열을 찾지 못했습니다.`, [
+      { path: '$', code: 'invalid_type' },
+    ]);
 
   if (!Array.isArray(comments)) {
-    throw new Error(`${MALFORMED_PREFIX}: 댓글 데이터는 배열이어야 합니다.`);
+    throw new AiResponseValidationError(`${MALFORMED_PREFIX}: 댓글 데이터는 배열이어야 합니다.`, [
+      { path: '$', code: 'invalid_type' },
+    ]);
   }
   const normalized = comments.map(item => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
@@ -180,7 +244,10 @@ export function parseGeminiCommentArrayResponse(responseText: string): GeminiCom
   });
   const result = geminiCommentContentSchema.array().safeParse(normalized);
   if (!result.success) {
-    throw new Error(`${MALFORMED_PREFIX}: 비어 있거나 잘못된 댓글이 포함되어 있습니다.`);
+    throw schemaError(
+      `${MALFORMED_PREFIX}: 비어 있거나 잘못된 댓글이 포함되어 있습니다.`,
+      result.error.issues,
+    );
   }
   return result.data;
 }
@@ -188,7 +255,10 @@ export function parseGeminiCommentArrayResponse(responseText: string): GeminiCom
 export function parseGeminiEvaluationResponse(responseText: string): GeminiEvaluationResponse {
   const result = geminiEvaluationResponseSchema.safeParse(parseUnknownJson(responseText));
   if (!result.success) {
-    throw new Error(`${MALFORMED_PREFIX}: 평가 지표는 0 이상의 유한 정수여야 합니다.`);
+    throw schemaError(
+      `${MALFORMED_PREFIX}: 평가 지표는 범위 내 정수여야 하며 총 추천·비추천 수는 조회수를 넘을 수 없습니다.`,
+      result.error.issues,
+    );
   }
   return result.data;
 }

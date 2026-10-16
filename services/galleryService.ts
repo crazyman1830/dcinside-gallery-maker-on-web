@@ -3,7 +3,9 @@ import type {
   AddUserPostResponse,
   Comment,
   CreateGalleryParams,
+  CreateGalleryRequest,
   GalleryData,
+  GalleryContinuationContext,
   GalleryContextParams,
   GalleryStreamEvent,
   GenerationWarning,
@@ -17,19 +19,22 @@ import {
   commentSchema,
   generationWarningSchema,
   initialGalleryDataSchema,
+  MAX_CONTINUATION_POSTS,
+  MAX_CONTINUATION_EXCERPT_CHARS,
   MAX_GROUNDING_SEARCH_ENTRY_POINT_BYTES,
   postSchema,
 } from '../schemas';
 import { ApiError, readApiError } from './apiError';
 export type {
   CreateGalleryParams,
+  CreateGalleryRequest,
   GalleryContextParams,
   GalleryStreamEvent,
   NewPostData,
 } from '../types';
 
 export const NDJSON_MAX_LINE_BYTES = 512 * 1024;
-export const NDJSON_MAX_TOTAL_BYTES = 1024 * 1024;
+export const NDJSON_MAX_TOTAL_BYTES = 3 * 1024 * 1024;
 export const GROUNDING_SEARCH_ENTRY_POINT_MAX_BYTES = MAX_GROUNDING_SEARCH_ENTRY_POINT_BYTES;
 
 const addUserPostResponseSchema = z
@@ -53,6 +58,7 @@ const galleryStreamEventSchema = z.discriminatedUnion('type', [
     .strict(),
   z.object({ type: z.literal('warning'), warning: generationWarningSchema }).strict(),
   z.object({ type: z.literal('result'), data: initialGalleryDataSchema }).strict(),
+  z.object({ type: z.literal('checkpoint'), data: initialGalleryDataSchema }).strict(),
   z
     .object({
       type: z.literal('error'),
@@ -190,10 +196,12 @@ const toAiRequestContext = (galleryContext: CreateGalleryParams): CreateGalleryP
   selectedModel: galleryContext.selectedModel,
   useSearch: galleryContext.useSearch,
   userProfile: galleryContext.userProfile,
+  ...(galleryContext.fixedNicknames ? { fixedNicknames: galleryContext.fixedNicknames } : {}),
+  ...(galleryContext.continuityNotes ? { continuityNotes: galleryContext.continuityNotes } : {}),
 });
 
 export const createGalleryStreamed = async (
-  params: CreateGalleryParams,
+  params: CreateGalleryRequest,
   onChunk: (text: string) => void,
   signal?: AbortSignal,
   onPhase?: (phase: string, message?: string, progress?: number) => void,
@@ -205,7 +213,22 @@ export const createGalleryStreamed = async (
       'Content-Type': 'application/json',
       Accept: 'application/x-ndjson',
     },
-    body: JSON.stringify(toAiRequestContext(params)),
+    body: JSON.stringify({
+      ...toAiRequestContext(params),
+      ...(params.continuationContext
+        ? {
+            continuationContext: {
+              galleryTitle: params.continuationContext.galleryTitle,
+              totalPostCount: params.continuationContext.totalPostCount,
+              recentPosts: params.continuationContext.recentPosts.map(post => ({
+                title: post.title,
+                author: post.author,
+                contentExcerpt: post.contentExcerpt,
+              })),
+            },
+          }
+        : {}),
+    }),
     signal,
   });
 
@@ -213,27 +236,50 @@ export const createGalleryStreamed = async (
   if (!response.body) throw new Error('로컬 AI 서버의 스트림을 열 수 없습니다.');
 
   let result: GalleryData | undefined;
+  let checkpoint: GalleryData | undefined;
   let streamError: Error | undefined;
   const warnings: GenerationWarning[] = [];
-  await parseNdjsonStream(
-    response.body,
-    event => {
-      if (event.type === 'chunk') onChunk(event.text);
-      if (event.type === 'phase') onPhase?.(event.phase, event.message, event.progress);
-      if (event.type === 'warning') warnings.push(event.warning);
-      if (event.type === 'result') result = event.data;
-      if (event.type === 'error') {
-        streamError = new ApiError(event.message, {
-          code: event.code,
-          retryable: event.retryable,
-          requestId: event.requestId,
-          retryAfterSeconds: event.retryAfterSeconds,
-        });
-      }
-    },
-    signal,
-  );
+  try {
+    await parseNdjsonStream(
+      response.body,
+      event => {
+        if (event.type === 'chunk') onChunk(event.text);
+        if (event.type === 'phase') onPhase?.(event.phase, event.message, event.progress);
+        if (event.type === 'warning') warnings.push(event.warning);
+        if (event.type === 'result') result = event.data;
+        if (event.type === 'checkpoint' && !params.useSearch) checkpoint = event.data;
+        if (event.type === 'error') {
+          streamError = new ApiError(event.message, {
+            code: event.code,
+            retryable: event.retryable,
+            requestId: event.requestId,
+            retryAfterSeconds: event.retryAfterSeconds,
+          });
+        }
+      },
+      signal,
+    );
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    streamError = error instanceof Error ? error : new Error('연결이 종료되었습니다.');
+  }
 
+  if (signal?.aborted)
+    throw signal.reason ?? new DOMException('The request was aborted.', 'AbortError');
+  if ((streamError || !result) && checkpoint) {
+    // Checkpoints are hidden until the request ends. Resume only incomplete
+    // enrichment stages; never replay a successfully generated set of posts.
+    return {
+      ...checkpoint,
+      warnings: (checkpoint.warnings ?? []).map(warning => ({
+        ...warning,
+        message: `${warning.message} (${streamError?.message ?? '결과 수신 중 연결 종료'})`.slice(
+          0,
+          500,
+        ),
+      })),
+    };
+  }
   if (streamError) throw streamError;
   if (!result) throw new Error('갤러리 생성 결과가 완료되기 전에 연결이 종료되었습니다.');
   if (warnings.length === 0) return result;
@@ -249,6 +295,18 @@ export const createGalleryStreamed = async (
   });
   return { ...result, warnings: mergedWarnings };
 };
+
+export const buildGalleryContinuationContext = (
+  galleryData: GalleryData,
+): GalleryContinuationContext => ({
+  galleryTitle: galleryData.galleryTitle,
+  totalPostCount: galleryData.posts.length,
+  recentPosts: galleryData.posts.slice(0, MAX_CONTINUATION_POSTS).map(post => ({
+    title: post.title,
+    author: post.author,
+    contentExcerpt: post.content.slice(0, MAX_CONTINUATION_EXCERPT_CHARS),
+  })),
+});
 
 export const addUserPost = async (
   newPostData: NewPostData,
@@ -266,12 +324,31 @@ export const addUserPost = async (
     signal,
   );
 
+export const retryPostStage = async (
+  post: Post,
+  stage: 'evaluation' | 'comments',
+  galleryContext: GalleryContextParams,
+  signal?: AbortSignal,
+): Promise<AddUserPostResponse> =>
+  postJson(
+    '/api/ai/posts/retry-stage',
+    { post, stage, galleryContext: toAiRequestContext(galleryContext) },
+    addUserPostResponseSchema,
+    signal,
+  );
+
+const conversationComment = (comment: Comment): Comment => {
+  const { reactionFailure: _failure, ...content } = comment;
+  return content;
+};
+
 export const addFollowUpComments = async (
   targetPost: Post,
   updatedComments: Comment[],
   galleryContext: GalleryContextParams,
   selectedModel: string,
   signal?: AbortSignal,
+  totalCommentCount = updatedComments.length,
 ): Promise<Comment[]> =>
   postJson<Comment[]>(
     '/api/ai/comments/follow-up',
@@ -282,8 +359,15 @@ export const addFollowUpComments = async (
         author: targetPost.author,
         content: targetPost.content,
       } satisfies FollowUpPostContext,
-      recentComments: updatedComments.slice(-6),
-      totalCommentCount: updatedComments.length,
+      recentComments: updatedComments.slice(-6).map(conversationComment),
+      ...(updatedComments.at(-1)?.replyTo
+        ? {
+            replyTargetComment: updatedComments
+              .filter(comment => comment.id === updatedComments.at(-1)?.replyTo?.commentId)
+              .map(conversationComment)[0],
+          }
+        : {}),
+      totalCommentCount,
       galleryContext: { ...toAiRequestContext(galleryContext), selectedModel },
     },
     followUpCommentsResponseSchema,

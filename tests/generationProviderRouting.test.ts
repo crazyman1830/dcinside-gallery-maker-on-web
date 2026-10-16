@@ -137,6 +137,7 @@ describe('generation provider routing', () => {
       1,
       expect.objectContaining({ selectedProvider: 'vertex' }),
       expect.any(AbortSignal),
+      undefined,
     );
     expect(engine.createWorldviewFeedback).toHaveBeenCalledWith(
       client,

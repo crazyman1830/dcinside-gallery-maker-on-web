@@ -8,6 +8,7 @@ import { UserConfigSection } from './UserConfigSection';
 import { GenerationOptionsSection } from './GenerationOptionsSection';
 import { AdvancedOptionsSection } from './AdvancedOptionsSection';
 import { UserProfileSection } from './UserProfileSection';
+import { FixedNicknameSettings } from './FixedNicknameSettings';
 import { PresetSection } from './PresetSection';
 import {
   deleteUserPreset,
@@ -30,7 +31,7 @@ interface GalleryCreationFormProps {
 }
 
 // Inner Component containing the UI logic
-const GalleryCreationFormContent: React.FC<GalleryCreationFormProps> = ({
+export const GalleryCreationFormContent: React.FC<GalleryCreationFormProps> = ({
   isLoading,
   onSubmit,
   setFormError,
@@ -130,7 +131,7 @@ const GalleryCreationFormContent: React.FC<GalleryCreationFormProps> = ({
       setFormError(null);
 
       const section =
-        firstErrorKey === 'fixedNickname'
+        firstErrorKey === 'fixedNickname' || firstErrorKey === 'fixedNicknames'
           ? 'profile'
           : firstErrorKey === 'customWorldviewText'
             ? 'worldview'
@@ -140,6 +141,7 @@ const GalleryCreationFormContent: React.FC<GalleryCreationFormProps> = ({
       setOpenSections(previous => ({ ...previous, [section]: true }));
 
       const fieldId: Record<keyof GalleryFormValidationErrors, string> = {
+        fixedNicknames: 'fixed-nicknames-settings',
         topic: 'topic',
         discussionContext: 'discussionContext',
         customWorldviewText: 'customWorldviewText',
@@ -183,6 +185,7 @@ const GalleryCreationFormContent: React.FC<GalleryCreationFormProps> = ({
     setFormError(null);
 
     onSubmit({
+      fixedNicknames: form.fixedNicknames,
       topic: form.topic,
       discussionContext: form.discussionContext,
       worldviewValue: form.selectedWorldview,
@@ -209,6 +212,33 @@ const GalleryCreationFormContent: React.FC<GalleryCreationFormProps> = ({
 
   return (
     <form onSubmit={handleSubmit} className="mb-8">
+      <div className="mb-4 flex flex-wrap items-center gap-2" aria-label="추천 시작 프리셋">
+        <span className="text-sm font-semibold text-slate-700">빠른 시작</span>
+        {presets.slice(0, 3).map(preset => (
+          <button
+            key={preset.id}
+            type="button"
+            disabled={isLoading}
+            className="rounded-full border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800 disabled:opacity-50"
+            onClick={() => handleLoadPreset(preset.id)}
+          >
+            {preset.name.replace('[예시] ', '')}
+          </button>
+        ))}
+      </div>
+      <div id="fixed-nicknames-settings" tabIndex={-1} className="mb-4">
+        <FixedNicknameSettings
+          value={form.fixedNicknames}
+          onSave={form.setFixedNicknames}
+          disabled={isLoading}
+          reservedNickname={form.userNicknameType === 'FIXED' ? form.fixedNickname : undefined}
+        />
+        {form.errors.fixedNicknames && (
+          <p role="alert" className="mt-2 text-sm text-red-700">
+            {form.errors.fixedNicknames}
+          </p>
+        )}
+      </div>
       <div className="space-y-4">
         <FormSection
           title="주제와 현재 떡밥"
@@ -348,6 +378,26 @@ const GalleryCreationFormContent: React.FC<GalleryCreationFormProps> = ({
         </FormSection>
       </div>
 
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 p-3 text-sm text-slate-700">
+        <p role="status">
+          {form.selectedProvider === 'gemini' ? 'Gemini' : 'Vertex AI'} ·{' '}
+          {isCheckingCredentials
+            ? '연결 확인 중'
+            : credentialStatus?.providers[form.selectedProvider].configured
+              ? '연결 설정됨'
+              : '연결 설정 필요'}
+        </p>
+        <button
+          type="button"
+          className="rounded border border-slate-300 px-3 py-2"
+          onClick={() => {
+            setOpenSections(previous => ({ ...previous, advanced: true }));
+            requestAnimationFrame(() => document.getElementById('ai-connection-settings')?.focus());
+          }}
+        >
+          AI 연결 설정으로 이동
+        </button>
+      </div>
       <button
         type="submit"
         disabled={isLoading}

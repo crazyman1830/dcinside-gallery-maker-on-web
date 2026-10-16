@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { aiMeasurements, createAiMeasurement } from './ai/telemetry';
 import express, { type Express, type NextFunction, type Request, type Response } from 'express';
 import { createCredentialRouter } from './routes/credentialRoutes';
 import { createGenerationRouter } from './routes/generationRoutes';
@@ -27,6 +28,11 @@ export const createApp = async ({
   app.use(createSecurityHeaders(mode === 'development'));
   app.use(sensitivePathGuard);
   app.use(requestIdMiddleware);
+  app.use((_request, response, next) => {
+    const measurement = createAiMeasurement();
+    response.locals.aiMeasurement = measurement;
+    aiMeasurements.run(measurement, next);
+  });
   if (mode !== 'test') {
     app.use((request, response, next) => {
       const startedAt = performance.now();
@@ -40,6 +46,7 @@ export const createApp = async ({
             path: request.path,
             status: response.statusCode,
             durationMs: Math.round(performance.now() - startedAt),
+            ai: response.locals.aiMeasurement,
           }),
         );
       });
@@ -58,7 +65,8 @@ export const createApp = async ({
     express.json({ limit: '64kb' }),
     createCredentialRouter({ store }),
   );
-  app.use('/api/ai/gallery/stream', sessionMiddleware, express.json({ limit: '16kb' }));
+  app.use('/api/ai/gallery/stream', sessionMiddleware, express.json({ limit: '32kb' }));
+  app.use('/api/ai/posts/retry-stage', sessionMiddleware, express.json({ limit: '256kb' }));
   app.use('/api/ai/posts', sessionMiddleware, express.json({ limit: '32kb' }));
   app.use('/api/ai/comments/follow-up', sessionMiddleware, express.json({ limit: '128kb' }));
   app.use('/api/ai/worldview-feedback', sessionMiddleware, express.json({ limit: '256kb' }));

@@ -8,6 +8,14 @@ import type {
 } from '../../types';
 import { NUMBER_OF_POSTS } from '../../constants';
 import {
+  buildBatchCommentsPrompt,
+  buildBatchEvaluationPrompt,
+  type BatchCommentPost,
+  type BatchPost,
+} from '../../services/prompts/batch';
+import { recordAiCall, recordAiUsage } from './telemetry';
+import { getModelGenerationConfig } from './modelConfig';
+import {
   buildCommentGenerationPrompt,
   buildFollowUpCommentPrompt,
 } from '../../services/prompts/comments';
@@ -24,6 +32,8 @@ import {
 } from '../../services/prompts/system';
 import type { PromptContext } from '../../services/prompts/context';
 import {
+  AiResponseValidationError,
+  extractJsonString,
   parseGeminiCommentArrayResponse,
   parseGeminiEvaluationResponse,
 } from '../../utils/jsonParser';
@@ -35,6 +45,8 @@ export const MAX_GALLERY_OUTPUT_TOKENS = 8_192;
 export const MAX_COMMENT_OUTPUT_TOKENS = 4_096;
 export const MAX_EVALUATION_OUTPUT_TOKENS = 256;
 export const MAX_FEEDBACK_OUTPUT_TOKENS = 1_024;
+export const MAX_BATCH_EVALUATION_OUTPUT_TOKENS = 1_536;
+export const MAX_BATCH_COMMENT_OUTPUT_TOKENS = 16_384;
 
 export class MalformedAiResponseError extends Error {
   readonly status = 502;
@@ -193,9 +205,15 @@ export const withProviderRetry = async <T>(
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
     throwIfAborted(signal);
     try {
-      return await (limitConcurrency
-        ? providerRpcLimiter.run(operation, signal)
-        : raceProviderOperationWithAbort(operation(), signal));
+      const measured = () => {
+        recordAiCall(attempt > 0);
+        return operation();
+      };
+      const result = await (limitConcurrency
+        ? providerRpcLimiter.run(measured, signal)
+        : raceProviderOperationWithAbort(measured(), signal));
+      recordAiUsage(result);
+      return result;
     } catch (error) {
       lastError = error;
       if (!isRetryableProviderError(error) || attempt === MAX_RETRIES) throw error;
@@ -211,14 +229,14 @@ export const withProviderRetry = async <T>(
 };
 
 const withFormatRepair = async <T>(
-  operation: (repair: boolean) => Promise<string>,
+  operation: (failure?: unknown) => Promise<string>,
   parse: (text: string) => T,
   signal?: AbortSignal,
 ): Promise<T> => {
   let lastError: unknown;
   for (let attempt = 0; attempt <= MAX_FORMAT_REPAIRS; attempt += 1) {
     throwIfAborted(signal);
-    const text = await operation(attempt > 0);
+    const text = await operation(lastError);
     try {
       return parse(text);
     } catch (error) {
@@ -230,16 +248,70 @@ const withFormatRepair = async <T>(
   throw new MalformedAiResponseError(lastError);
 };
 
-const withFormatRecoveryInstruction = (systemInstruction: string, repair: boolean): string =>
-  repair
-    ? `${systemInstruction}\n\nFORMAT RECOVERY: A previous attempt did not satisfy the response schema. Follow the same task, but return only a complete value matching the schema. Do not add prose or Markdown fences.`
-    : systemInstruction;
+const withFormatRecoveryInstruction = (systemInstruction: string, failure?: unknown): string => {
+  if (failure === undefined) return systemInstruction;
+  const diagnostics =
+    failure instanceof AiResponseValidationError
+      ? `\nValidation issues: ${JSON.stringify(failure.issues)}`
+      : '';
+  return `${systemInstruction}\n\nFORMAT RECOVERY: A previous attempt did not satisfy the response schema. Regenerate the complete result for the same task, correcting the validation issues below. Return only a complete value matching the schema; do not return a patch, prose, or Markdown fences.
+invalid_json = return a complete parseable JSON value; invalid_type = supply the required field with its schema type; too_small/too_big = obey the schema length and numeric bounds; count = return exactly expectedCount items; constraint = obey all task invariants, including total votes <= views.${diagnostics}`;
+};
+
+interface StructuredGenerationRequest<T> {
+  prompt: string;
+  systemInstruction: string;
+  responseSchema: Schema;
+  maxOutputTokens: number;
+  parse: (text: string) => T;
+}
+
+/** Keep the task, count, schema and token budget identical across recovery attempts. */
+const generateStructuredResponse = <T>(
+  ai: GoogleGenAI,
+  model: string,
+  request: StructuredGenerationRequest<T>,
+  signal?: AbortSignal,
+): Promise<T> =>
+  withFormatRepair(
+    async failure => {
+      const response = await withProviderRetry(
+        () =>
+          ai.models.generateContent({
+            model,
+            contents: request.prompt,
+            config: {
+              systemInstruction: withFormatRecoveryInstruction(request.systemInstruction, failure),
+              responseMimeType: 'application/json',
+              responseSchema: request.responseSchema,
+              ...getModelGenerationConfig(model, request.maxOutputTokens),
+              abortSignal: signal,
+            },
+          }),
+        { signal },
+      );
+      return response.text ?? '';
+    },
+    request.parse,
+    signal,
+  );
+
+const parseRequestedComments = (text: string, count: number): GeminiCommentContent[] => {
+  const comments = parseGeminiCommentArrayResponse(text);
+  if (comments.length !== count) {
+    throw new AiResponseValidationError('AI comment count did not match the requested count.', [
+      { path: '$', code: 'count', expectedCount: count },
+    ]);
+  }
+  return comments;
+};
 
 export const repairGalleryGeneration = async (
   ai: GoogleGenAI,
   context: PromptContext,
   model: string,
   signal?: AbortSignal,
+  failure: unknown = new Error('Gallery response did not match the schema.'),
 ): Promise<string> => {
   const { prompt } = buildGalleryGenerationPrompt(context);
   const response = await withProviderRetry(
@@ -250,11 +322,11 @@ export const repairGalleryGeneration = async (
         config: {
           systemInstruction: withFormatRecoveryInstruction(
             buildGallerySystemInstruction(context.topic, context),
-            true,
+            failure,
           ),
           responseMimeType: 'application/json',
           responseSchema: galleryResponseSchema,
-          maxOutputTokens: MAX_GALLERY_OUTPUT_TOKENS,
+          ...getModelGenerationConfig(model, MAX_GALLERY_OUTPUT_TOKENS),
           abortSignal: signal,
         },
       }),
@@ -323,6 +395,99 @@ const buildCommentArraySchema = (count: number): Schema => ({
   maxItems: String(count),
 });
 
+const parseBatchResponse = <T>(
+  text: string,
+  posts: BatchPost[],
+  parseItem: (item: Record<string, unknown>, post: BatchPost) => T,
+): Map<string, T> => {
+  const raw: unknown = JSON.parse(extractJsonString(text));
+  if (!Array.isArray(raw) || raw.length !== posts.length) {
+    throw new AiResponseValidationError('Batch size must match the requested posts.', [
+      { path: '$', code: 'count', expectedCount: posts.length },
+    ]);
+  }
+  const expected = new Map(posts.map(post => [post.id, post]));
+  const parsed = new Map<string, T>();
+  for (const value of raw) {
+    const item = value as Record<string, unknown> | null;
+    const post = item && typeof item.postId === 'string' ? expected.get(item.postId) : undefined;
+    if (!post || parsed.has(post.id)) {
+      throw new AiResponseValidationError('Batch post IDs must match exactly once.', [
+        { path: '$', code: 'constraint' },
+      ]);
+    }
+    parsed.set(post.id, parseItem(item!, post));
+  }
+  return parsed;
+};
+
+const batchSchema = (count: number, properties: Record<string, Schema>): Schema => ({
+  type: Type.ARRAY,
+  minItems: String(count),
+  maxItems: String(count),
+  items: {
+    type: Type.OBJECT,
+    properties: { postId: { type: Type.STRING }, ...properties },
+    required: ['postId', ...Object.keys(properties)],
+  },
+});
+
+export const evaluatePostsBatch = (
+  ai: GoogleGenAI,
+  posts: BatchPost[],
+  context: PromptContext,
+  model: string,
+  signal?: AbortSignal,
+): Promise<Map<string, GeminiEvaluationResponse>> =>
+  generateStructuredResponse(
+    ai,
+    model,
+    {
+      prompt: buildBatchEvaluationPrompt(posts, context),
+      systemInstruction: buildEvaluationSystemInstruction(context.topic, context, true),
+      responseSchema: batchSchema(posts.length, evaluationSchema.properties!),
+      maxOutputTokens: MAX_BATCH_EVALUATION_OUTPUT_TOKENS,
+      parse: text =>
+        parseBatchResponse(text, posts, item => {
+          const metrics = { ...item };
+          delete metrics.postId;
+          return parseGeminiEvaluationResponse(JSON.stringify(metrics));
+        }),
+    },
+    signal,
+  );
+
+export const generateCommentsBatch = (
+  ai: GoogleGenAI,
+  posts: BatchCommentPost[],
+  context: PromptContext,
+  model: string,
+  signal?: AbortSignal,
+): Promise<Map<string, GeminiCommentContent[]>> => {
+  const counts = new Map(posts.map(post => [post.id, post.requestedCommentCount]));
+  return generateStructuredResponse(
+    ai,
+    model,
+    {
+      prompt: buildBatchCommentsPrompt(posts, context),
+      systemInstruction: buildCommentSystemInstruction(context.topic, context, true),
+      responseSchema: batchSchema(posts.length, {
+        comments: { type: Type.ARRAY, items: commentSchema, minItems: '1', maxItems: '20' },
+      }),
+      maxOutputTokens: MAX_BATCH_COMMENT_OUTPUT_TOKENS,
+      parse: text =>
+        parseBatchResponse(text, posts, (item, post) => {
+          if (Object.keys(item).some(key => key !== 'postId' && key !== 'comments')) {
+            throw new AiResponseValidationError('Unexpected batch comment field.', [
+              { path: '$', code: 'constraint' },
+            ]);
+          }
+          return parseRequestedComments(JSON.stringify(item.comments), counts.get(post.id)!);
+        }),
+    },
+    signal,
+  );
+};
 export interface GalleryStreamChunk {
   text: string;
   sources: Array<{ title?: string; uri?: string }>;
@@ -368,7 +533,7 @@ export const streamGalleryGeneration = async (
           const providerStream = await ai.models.generateContentStream({
             model,
             contents: prompt,
-            config: { ...config, maxOutputTokens: MAX_GALLERY_OUTPUT_TOKENS },
+            config: { ...config, ...getModelGenerationConfig(model, MAX_GALLERY_OUTPUT_TOKENS) },
           });
           const streamIterator = providerStream[Symbol.asyncIterator]();
           const firstChunk = await streamIterator.next();
@@ -381,10 +546,12 @@ export const streamGalleryGeneration = async (
       { signal, limitConcurrency: false },
     );
 
+    let latestUsage: GenerateContentResponse | undefined;
     try {
       let next = first;
       while (!next.done) {
         const chunk = next.value;
+        if (chunk.usageMetadata) latestUsage = chunk;
         const groundingMetadata = chunk.candidates?.[0]?.groundingMetadata;
         const rawGroundingChunks = groundingMetadata?.groundingChunks;
         const groundingChunks: unknown[] = Array.isArray(rawGroundingChunks)
@@ -425,6 +592,7 @@ export const streamGalleryGeneration = async (
         next = await iterator.next();
       }
     } finally {
+      recordAiUsage(latestUsage);
       try {
         await iterator.return?.(undefined);
       } catch {
@@ -453,34 +621,15 @@ export const generateComments = async (
     minComments,
     maxComments,
   );
-  return withFormatRepair(
-    async repair => {
-      const response: GenerateContentResponse = await withProviderRetry(
-        () =>
-          ai.models.generateContent({
-            model,
-            contents: prompt,
-            config: {
-              responseMimeType: 'application/json',
-              responseSchema: buildCommentArraySchema(numberOfCommentsToGenerate),
-              systemInstruction: withFormatRecoveryInstruction(
-                buildCommentSystemInstruction(context.topic, context),
-                repair,
-              ),
-              maxOutputTokens: MAX_COMMENT_OUTPUT_TOKENS,
-              abortSignal: signal,
-            },
-          }),
-        { signal },
-      );
-      return response.text ?? '';
-    },
-    text => {
-      const comments = parseGeminiCommentArrayResponse(text);
-      if (comments.length !== numberOfCommentsToGenerate) {
-        throw new Error('AI comment count did not match the requested count.');
-      }
-      return comments;
+  return generateStructuredResponse(
+    ai,
+    model,
+    {
+      prompt,
+      systemInstruction: buildCommentSystemInstruction(context.topic, context),
+      responseSchema: buildCommentArraySchema(numberOfCommentsToGenerate),
+      maxOutputTokens: MAX_COMMENT_OUTPUT_TOKENS,
+      parse: text => parseRequestedComments(text, numberOfCommentsToGenerate),
     },
     signal,
   );
@@ -496,6 +645,7 @@ export const generateFollowUpComments = async (
   maxComments: number,
   model: string,
   signal?: AbortSignal,
+  replyTargetComment?: Comment,
 ): Promise<GeminiCommentContent[]> => {
   const { prompt, numberOfCommentsToGenerate } = buildFollowUpCommentPrompt(
     post,
@@ -504,35 +654,17 @@ export const generateFollowUpComments = async (
     minComments,
     maxComments,
     totalExistingCommentCount,
+    replyTargetComment,
   );
-  return withFormatRepair(
-    async repair => {
-      const response: GenerateContentResponse = await withProviderRetry(
-        () =>
-          ai.models.generateContent({
-            model,
-            contents: prompt,
-            config: {
-              responseMimeType: 'application/json',
-              responseSchema: buildCommentArraySchema(numberOfCommentsToGenerate),
-              systemInstruction: withFormatRecoveryInstruction(
-                buildCommentSystemInstruction(context.topic, context),
-                repair,
-              ),
-              maxOutputTokens: MAX_COMMENT_OUTPUT_TOKENS,
-              abortSignal: signal,
-            },
-          }),
-        { signal },
-      );
-      return response.text ?? '';
-    },
-    text => {
-      const comments = parseGeminiCommentArrayResponse(text);
-      if (comments.length !== numberOfCommentsToGenerate) {
-        throw new Error('AI follow-up comment count did not match the requested count.');
-      }
-      return comments;
+  return generateStructuredResponse(
+    ai,
+    model,
+    {
+      prompt,
+      systemInstruction: buildCommentSystemInstruction(context.topic, context),
+      responseSchema: buildCommentArraySchema(numberOfCommentsToGenerate),
+      maxOutputTokens: MAX_COMMENT_OUTPUT_TOKENS,
+      parse: text => parseRequestedComments(text, numberOfCommentsToGenerate),
     },
     signal,
   );
@@ -546,29 +678,16 @@ export const evaluatePost = async (
   signal?: AbortSignal,
 ): Promise<GeminiEvaluationResponse> => {
   const { prompt } = buildPostEvaluationPrompt(post, context);
-  return withFormatRepair(
-    async repair => {
-      const response: GenerateContentResponse = await withProviderRetry(
-        () =>
-          ai.models.generateContent({
-            model,
-            contents: prompt,
-            config: {
-              responseMimeType: 'application/json',
-              responseSchema: evaluationSchema,
-              systemInstruction: withFormatRecoveryInstruction(
-                buildEvaluationSystemInstruction(context.topic, context),
-                repair,
-              ),
-              maxOutputTokens: MAX_EVALUATION_OUTPUT_TOKENS,
-              abortSignal: signal,
-            },
-          }),
-        { signal },
-      );
-      return response.text ?? '';
+  return generateStructuredResponse(
+    ai,
+    model,
+    {
+      prompt,
+      systemInstruction: buildEvaluationSystemInstruction(context.topic, context),
+      responseSchema: evaluationSchema,
+      maxOutputTokens: MAX_EVALUATION_OUTPUT_TOKENS,
+      parse: parseGeminiEvaluationResponse,
     },
-    parseGeminiEvaluationResponse,
     signal,
   );
 };
@@ -589,7 +708,7 @@ export const generateFeedback = async (
         config: {
           systemInstruction: buildFeedbackSystemInstruction(),
           abortSignal: signal,
-          maxOutputTokens: MAX_FEEDBACK_OUTPUT_TOKENS,
+          ...getModelGenerationConfig(model, MAX_FEEDBACK_OUTPUT_TOKENS),
         },
       });
       return response.text || '피드백을 생성할 수 없습니다.';

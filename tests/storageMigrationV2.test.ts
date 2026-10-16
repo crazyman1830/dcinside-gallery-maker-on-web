@@ -162,6 +162,56 @@ describe('GallerySessionV2 migration', () => {
     expect(migrated?.warnings).toHaveLength(1);
   });
 
+  it('preserves nickname configuration and valid failed reactions across session restoration', () => {
+    const reactionFailure = {
+      message: '일시 오류',
+      retryAt: 100,
+      reconnect: false,
+      retryable: true,
+      failedAt: '2026-10-03T00:00:00.000Z',
+    };
+    const fixedNicknames = [
+      {
+        id: 'npc-luna',
+        nickname: '루나',
+        description: '길드장',
+        speechStyle: '차분하게',
+        activity: 'frequent',
+      },
+    ];
+    const migrated = migrateGallerySession({
+      version: 2,
+      revision: 1,
+      savedAt: '2026-10-03T00:00:00.000Z',
+      gallery: {
+        ...legacyGallery,
+        posts: [
+          {
+            ...legacyGallery.posts[0],
+            comments: [
+              { ...legacyGallery.posts[0].comments[0], reactionFailure },
+              {
+                ...legacyGallery.posts[0].comments[0],
+                id: 'c2',
+                reactionFailure: { retryAt: 'broken' },
+              },
+            ],
+          },
+        ],
+      },
+      context: {
+        ...legacyContext,
+        worldviewValue: 'CUSTOM',
+        customWorldviewText: '마법 도시',
+        fixedNicknames,
+      },
+      profile: null,
+    });
+    expect(migrated?.context.fixedNicknames).toEqual(fixedNicknames);
+    expect(migrated?.gallery.posts[0].comments[0].reactionFailure).toEqual(reactionFailure);
+    expect(migrated?.gallery.posts[0].comments[1]).not.toHaveProperty('reactionFailure');
+  });
+
   it('rejects malformed galleries and migrates provider context safely', () => {
     expect(migrateGalleryData(null)).toBeNull();
     expect(migrateGalleryData({ galleryTitle: 'g', posts: 'wrong' })).toBeNull();

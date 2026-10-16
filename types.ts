@@ -11,6 +11,24 @@ export interface Comment {
   voted?: 'rec' | 'nonrec' | null;
   /** Stable reply metadata. Legacy comments may omit this field. */
   replyTo?: ReplyTarget;
+  /** Local recovery metadata; never used as AI conversation content. */
+  reactionFailure?: ReactionFailure;
+}
+
+export interface ReactionFailure {
+  message: string;
+  retryAt: number;
+  reconnect: boolean;
+  retryable: boolean;
+  failedAt: string;
+}
+
+export interface FixedNickname {
+  id: string;
+  nickname: string;
+  description: string;
+  speechStyle: string;
+  activity: 'frequent' | 'occasional' | 'rare';
 }
 
 export interface ReplyTarget {
@@ -109,6 +127,7 @@ export interface GeminiEvaluationResponse {
 
 // --- Form & Preset Types ---
 export interface GalleryFormSettings {
+  fixedNicknames?: FixedNickname[];
   topic: string;
   discussionContext: string;
   selectedWorldview: string;
@@ -145,6 +164,7 @@ export interface Preset {
 }
 
 export interface CreateGalleryParams {
+  fixedNicknames?: FixedNickname[];
   topic: string;
   discussionContext: string;
   worldviewValue: string;
@@ -160,9 +180,27 @@ export interface CreateGalleryParams {
   selectedModel: string;
   useSearch: boolean;
   userProfile?: UserProfile;
+  /** Bounded user-maintained continuity notes, treated as data by prompt builders. */
+  continuityNotes?: string;
 }
 
 export type CreateGalleryInput = CreateGalleryParams;
+
+/** Ephemeral evidence from the newest posts when extending an existing gallery. */
+export interface GalleryContinuationContext {
+  galleryTitle: string;
+  totalPostCount: number;
+  recentPosts: Array<{
+    title: string;
+    author: string;
+    contentExcerpt: string;
+  }>;
+}
+
+/** Generation-only input. Continuation evidence is never persisted as settings. */
+export interface CreateGalleryRequest extends CreateGalleryParams {
+  continuationContext?: GalleryContinuationContext;
+}
 
 /** Local session metadata plus the AI request settings that produced the gallery. */
 export type GalleryContextParams = CreateGalleryParams & {
@@ -234,6 +272,7 @@ export type GalleryStreamEvent =
   | { type: 'chunk'; text: string }
   | { type: 'warning'; warning: GenerationWarning }
   | { type: 'result'; data: GalleryData }
+  | { type: 'checkpoint'; data: GalleryData }
   | {
       type: 'error';
       message: string;

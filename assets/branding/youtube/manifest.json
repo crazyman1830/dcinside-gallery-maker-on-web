@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "createdAt": "2026-08-18",
+  "platform": "YouTube",
+  "generationMode": "built-in image_gen",
+  "design": {
+    "concept": "Two overlapping speech bubbles forming a subtle play symbol, with one worldline dot",
+    "palette": ["#F8F7F2", "#2563EB", "#4F46E5", "deep navy/slate"],
+    "textInImage": false
+  },
+  "exports": [
+    {
+      "file": "channel-icon.png",
+      "purpose": "YouTube channel icon master",
+      "width": 1024,
+      "height": 1024,
+      "colorMode": "RGB",
+      "sha256": "cc8c18e13dd4983905915dfba994369022670c5a4b331f4fc9274e958a853aa7"
+    },
+    {
+      "file": "channel-banner.png",
+      "purpose": "YouTube channel banner",
+      "width": 2560,
+      "height": 1440,
+      "colorMode": "RGB",
+      "safeArea": {
+        "width": 1544,
+        "height": 423,
+        "alignment": "center"
+      },
+      "sha256": "153c6d1cc75b932711849a49432ca09b4a7b45c37675d03a71e82d7d0cf80e5a"
+    }
+  ],
+  "sources": [
+    {
+      "file": "channel-icon-source.png",
+      "width": 1254,
+      "height": 1254
+    },
+    {
+      "file": "channel-banner-source.png",
+      "width": 2560,
+      "height": 1440
+    }
+  ]
+}

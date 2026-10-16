@@ -1,4 +1,7 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { GalleryLibrary } from './components/GalleryLibrary';
+import { FixedNicknameSettings } from './components/FixedNicknameSettings';
+import { WorldlineMemory } from './components/WorldlineMemory';
 import { GalleryHeader } from './components/GalleryHeader';
 import { PostList } from './components/PostList';
 import { PostView } from './components/PostView';
@@ -6,18 +9,27 @@ import { ErrorMessage } from './components/ErrorMessage';
 import { SuccessMessage } from './components/SuccessMessage';
 import { WarningMessage } from './components/WarningMessage';
 import { WritePostModal } from './components/WritePostModal';
-import { GalleryCreationForm } from './components/GalleryCreationForm';
+import { GalleryCreationFormContent } from './components/GalleryCreationForm';
+import { GalleryFormProvider } from './context/GalleryFormContext';
+import { galleryContextToFormSettings } from './utils/gallerySettings';
+import { useGalleryNavigation } from './hooks/useGalleryNavigation';
 import { WorldviewFeedback } from './components/WorldviewFeedback';
 import { StreamingStatus } from './components/StreamingStatus';
 import { useGallery } from './hooks/useGallery';
 import { MAX_TOTAL_COMMENTS_PER_POST } from './constants';
-import type { AppView, CreateGalleryInput, UserProfile } from './types';
+import type { CreateGalleryInput, GallerySessionV2, UserProfile } from './types';
 
 type GallerySubmission = CreateGalleryInput & { userProfile: UserProfile };
 
 const App: React.FC = () => {
   const {
     galleryData,
+    revision,
+    openSession,
+    saveContinuityNotes,
+    saveFixedNicknames,
+    retryFailedStages,
+    generationFailure,
     galleryContext,
     currentUserProfile,
     isLoading,
@@ -25,7 +37,6 @@ const App: React.FC = () => {
     successMessage,
     warningMessage,
     storageWarning,
-    selectedPost,
     isWriteModalOpen,
     isSavingUserPost,
     isAddingComment,
@@ -44,24 +55,34 @@ const App: React.FC = () => {
     closeWriteModal,
     saveUserPost,
     addUserComment,
+    failedReactionList,
+    retryReaction,
     votePost,
     voteComment,
     fetchWorldviewFeedback,
     setError,
   } = useGallery();
 
-  const [view, setView] = useState<AppView>(() => (galleryData ? 'gallery-list' : 'setup'));
-
+  const navigation = useGalleryNavigation(galleryData, galleryContext?.worldlineId, isLoading);
+  const { navigate, post: selectedPost } = navigation;
+  const view = isLoading ? 'setup' : navigation.view;
   useEffect(() => {
-    if (!galleryData && !isLoading) setView('setup');
-  }, [galleryData, isLoading]);
-
-  useEffect(() => {
-    if (view === 'post' && !selectedPost) setView(galleryData ? 'gallery-list' : 'setup');
-  }, [galleryData, selectedPost, view]);
+    closeWriteModal();
+  }, [navigation.view, selectedPost?.id, closeWriteModal]);
+  const [formSeed, setFormSeed] = useState(() => ({
+    key: 0,
+    settings: galleryContextToFormSettings(galleryContext, currentUserProfile),
+  }));
+  const libraryRef = useRef<{ saveCurrent: () => Promise<boolean> }>(null);
 
   const handleCreateGallery = useCallback(
     async (params: GallerySubmission) => {
+      if (libraryRef.current && !(await libraryRef.current.saveCurrent())) {
+        setError(
+          '현재 갤러리를 보관하지 못해 새 생성을 시작하지 않았습니다. 보관함 메시지를 확인해주세요.',
+        );
+        return;
+      }
       const pendingResult = createGallery(params);
       requestAnimationFrame(() => {
         document.getElementById('generation-status')?.scrollIntoView({
@@ -73,47 +94,55 @@ const App: React.FC = () => {
       });
       const created = await pendingResult;
       if (created) {
-        setView('gallery-list');
-        requestAnimationFrame(() => document.getElementById('gallery-content-title')?.focus());
+        navigate('gallery-list');
+        requestAnimationFrame(() =>
+          document.getElementById('gallery-content-title')?.focus({ preventScroll: true }),
+        );
       }
     },
-    [createGallery],
+    [createGallery, navigate, setError],
   );
 
   const handleSelectPost = useCallback(
     (postId: string) => {
       selectPost(postId);
-      setView('post');
-      requestAnimationFrame(() => document.getElementById('post-title')?.focus());
+      navigate('post', postId);
+      requestAnimationFrame(() =>
+        document.getElementById('post-title')?.focus({ preventScroll: true }),
+      );
     },
-    [selectPost],
+    [selectPost, navigate],
   );
 
   const handleBackToList = useCallback(() => {
     backToList();
-    setView('gallery-list');
-    requestAnimationFrame(() => document.getElementById('gallery-content-title')?.focus());
-  }, [backToList]);
+    navigate('gallery-list');
+    requestAnimationFrame(() =>
+      document.getElementById('gallery-content-title')?.focus({ preventScroll: true }),
+    );
+  }, [backToList, navigate]);
 
   const handleOpenSetup = useCallback(() => {
     backToList();
-    setView('setup');
-    window.scrollTo({ top: 0, behavior: 'auto' });
-    requestAnimationFrame(() => document.getElementById('setup-title')?.focus());
-  }, [backToList]);
+    navigate('setup');
+    requestAnimationFrame(() =>
+      document.getElementById('setup-title')?.focus({ preventScroll: true }),
+    );
+  }, [backToList, navigate]);
 
   const handleSavePost = useCallback(
     async (title: string, author: string, content: string) => {
-      const saved = await saveUserPost(title, author, content);
+      const saved = await saveUserPost(title, author, content, id => navigate('post', id));
       if (saved) {
-        setView('post');
         requestAnimationFrame(() => {
-          requestAnimationFrame(() => document.getElementById('post-title')?.focus());
+          requestAnimationFrame(() =>
+            document.getElementById('post-title')?.focus({ preventScroll: true }),
+          );
         });
       }
       return saved;
     },
-    [saveUserPost],
+    [saveUserPost, navigate],
   );
 
   const handleOpenWriteModal = useCallback(() => {
@@ -122,171 +151,364 @@ const App: React.FC = () => {
   }, [openWriteModal, setError]);
 
   const handleReturnToGallery = useCallback(() => {
-    setView('gallery-list');
-    requestAnimationFrame(() => document.getElementById('gallery-content-title')?.focus());
-  }, []);
+    navigate('gallery-list');
+    requestAnimationFrame(() =>
+      document.getElementById('gallery-content-title')?.focus({ preventScroll: true }),
+    );
+  }, [navigate]);
 
   const isGalleryView = view === 'gallery-list' || view === 'post';
+  const currentSession = useMemo<GallerySessionV2 | null>(
+    () =>
+      galleryData && galleryContext
+        ? {
+            version: 2,
+            revision,
+            savedAt: new Date().toISOString(),
+            gallery: {
+              galleryTitle: galleryData.galleryTitle,
+              posts: galleryData.posts,
+              ...(galleryData.warnings ? { warnings: galleryData.warnings } : {}),
+            },
+            context: galleryContext,
+            profile: currentUserProfile,
+          }
+        : null,
+    [galleryData, galleryContext, currentUserProfile, revision],
+  );
 
   return (
-    <div className="container mx-auto flex min-h-screen max-w-4xl flex-col p-4 font-sans">
-      {view === 'setup' && (
-        <header className="space-y-5 py-10 text-center md:py-14">
-          <div className="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-blue-700 shadow-sm animate-fade-in-up">
-            <i className="fas fa-robot" aria-hidden="true" /> AI Community Generator
-          </div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 drop-shadow-sm animate-fade-in-up sm:text-5xl md:text-6xl">
-            <span className="inline-block">DCInside</span>{' '}
-            <span className="inline-block whitespace-nowrap bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-              갤러리 생성기
-            </span>
-          </h1>
-          <div className="mx-auto max-w-2xl space-y-2 animate-fade-in-up">
-            <p className="text-lg font-medium leading-relaxed text-slate-600 md:text-xl">
-              상상하는 모든 주제가 현실적인 커뮤니티로 탄생합니다.
-            </p>
-            <p className="text-sm font-medium text-slate-600 md:text-base">
-              원하는 세계관과 설정을 입력하면 AI가 개념글, 댓글, 여론을 실시간으로 시뮬레이션합니다.
-            </p>
-          </div>
-        </header>
-      )}
-
-      <main className="flex-grow">
-        {successMessage && !error && <SuccessMessage message={successMessage} />}
-        {warningMessage && !error && <WarningMessage message={warningMessage} />}
-        {storageWarning && <WarningMessage message={storageWarning} />}
-        {error && <ErrorMessage message={error} />}
-
+    <GalleryFormProvider
+      key={formSeed.key}
+      initialState={formSeed.settings}
+      sessionFixedNicknames={galleryContext?.fixedNicknames}
+    >
+      <div className="container mx-auto flex min-h-screen max-w-4xl flex-col p-4 font-sans">
         {view === 'setup' && (
-          <section aria-labelledby="setup-title">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <h2
-                id="setup-title"
-                tabIndex={-1}
-                className="text-xl font-bold text-slate-800 outline-none"
-              >
-                갤러리 설정
-              </h2>
-              {galleryData && !isLoading && (
-                <button
-                  type="button"
-                  onClick={handleReturnToGallery}
-                  className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                >
-                  <i className="fas fa-arrow-left mr-2" aria-hidden="true" />
-                  기존 갤러리로 돌아가기
-                </button>
-              )}
+          <header className="space-y-5 py-10 text-center md:py-14">
+            <div className="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-blue-700 shadow-sm animate-fade-in-up">
+              <i className="fas fa-robot" aria-hidden="true" /> AI Community Generator
             </div>
-            <GalleryCreationForm
-              isLoading={isLoading}
-              onSubmit={handleCreateGallery}
-              setFormError={setError}
-            />
-            {isLoading && streamingText !== null && (
-              <StreamingStatus
-                phase={generationPhase}
-                message={generationMessage}
-                reportedProgress={generationProgress}
-                onCancel={cancelGeneration}
-              />
-            )}
-          </section>
+            <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 drop-shadow-sm animate-fade-in-up sm:text-5xl md:text-6xl">
+              <span className="inline-block">DCInside</span>{' '}
+              <span className="inline-block whitespace-nowrap bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                갤러리 생성기
+              </span>
+            </h1>
+            <div className="mx-auto max-w-2xl space-y-2 animate-fade-in-up">
+              <p className="text-lg font-medium leading-relaxed text-slate-600 md:text-xl">
+                상상하는 모든 주제가 현실적인 커뮤니티로 탄생합니다.
+              </p>
+              <p className="text-sm font-medium text-slate-600 md:text-base">
+                원하는 세계관과 설정을 입력하면 AI가 개념글, 댓글, 여론을 실시간으로
+                시뮬레이션합니다.
+              </p>
+            </div>
+          </header>
         )}
 
-        {isGalleryView && galleryData && !isLoading && (
-          <section
-            className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-xl shadow-slate-200/60 animate-fade-in"
-            aria-labelledby="gallery-content-title"
-          >
-            <GalleryHeader
-              galleryTitle={galleryData.galleryTitle}
-              worldlineId={galleryContext?.worldlineId}
-              sources={galleryData.sources}
-            />
-            <div className="min-h-[500px] bg-slate-50/30 p-4 md:p-6">
-              <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-                <h2
-                  id="gallery-content-title"
-                  tabIndex={-1}
-                  className="text-lg font-bold text-slate-800 outline-none"
-                >
-                  {view === 'post' ? '게시물 보기' : '게시물 목록'}
-                </h2>
-                <button
-                  type="button"
-                  onClick={handleOpenSetup}
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                >
-                  <i className="fas fa-sliders-h mr-2" aria-hidden="true" />새 갤러리 / 설정
-                </button>
-              </div>
+        <main className="flex-grow">
+          {successMessage && !error && <SuccessMessage message={successMessage} />}
+          {warningMessage && !error && <WarningMessage message={warningMessage} />}
+          {storageWarning && <WarningMessage message={storageWarning} />}
+          {error && <ErrorMessage message={error} />}
+          {generationFailure && !isLoading && (
+            <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-4" role="status">
+              <p className="text-sm text-slate-800">
+                실패 단계: {generationFailure.stage} ·{' '}
+                {new Date(generationFailure.failedAt).toLocaleTimeString('ko-KR')}
+              </p>
+              <p className="mt-1 text-sm text-slate-700">{generationFailure.message}</p>
+              <button
+                type="button"
+                className="mt-3 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                onClick={() =>
+                  void createGallery(generationFailure.params, generationFailure.append).then(
+                    created => {
+                      if (created) navigate('gallery-list');
+                    },
+                  )
+                }
+              >
+                실패 지점에서 재시도
+              </button>
+            </div>
+          )}
+          <GalleryLibrary
+            ref={libraryRef}
+            session={currentSession}
+            disabled={isLoading || isSavingUserPost || isAddingComment}
+            onOpen={session => {
+              openSession(session);
+              setFormSeed(previous => ({
+                key: previous.key + 1,
+                settings: galleryContextToFormSettings(session.context, session.profile),
+              }));
+              navigate('gallery-list');
+            }}
+          />
 
-              {view === 'post' && selectedPost ? (
-                <>
+          {view === 'setup' && (
+            <section aria-labelledby="setup-title">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <h2
+                  id="setup-title"
+                  tabIndex={-1}
+                  className="text-xl font-bold text-slate-800 outline-none"
+                >
+                  갤러리 설정
+                </h2>
+                {galleryData && !isLoading && (
                   <button
                     type="button"
-                    onClick={handleBackToList}
-                    className="group mb-6 flex items-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                    aria-label="게시물 목록으로 돌아가기"
+                    onClick={handleReturnToGallery}
+                    className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                   >
-                    <i
-                      className="fas fa-arrow-left mr-2 transition-transform group-hover:-translate-x-1"
-                      aria-hidden="true"
-                    />{' '}
-                    목록으로
+                    <i className="fas fa-arrow-left mr-2" aria-hidden="true" />
+                    기존 갤러리로 돌아가기
                   </button>
-                  <PostView
-                    post={selectedPost}
-                    currentUserProfile={currentUserProfile}
-                    onBackToList={handleBackToList}
-                    onWritePost={handleOpenWriteModal}
-                    onAddComment={addUserComment}
-                    isAddingComment={isAddingComment}
-                    maxComments={MAX_TOTAL_COMMENTS_PER_POST}
-                    highlightedCommentIds={highlightedCommentIds}
-                    onVotePost={votePost}
-                    onVoteComment={voteComment}
-                  />
-                </>
-              ) : (
-                <PostList
-                  posts={galleryData.posts}
-                  onSelectPost={handleSelectPost}
-                  onWritePost={handleOpenWriteModal}
+                )}
+              </div>
+              <button
+                type="button"
+                disabled={isLoading}
+                className="mb-4 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 disabled:opacity-50"
+                onClick={() => {
+                  setFormSeed(previous => ({ key: previous.key + 1, settings: {} }));
+                  setError(null);
+                }}
+              >
+                설정 초기화
+              </button>
+              <GalleryCreationFormContent
+                isLoading={isLoading}
+                onSubmit={handleCreateGallery}
+                setFormError={setError}
+              />
+              {isLoading && streamingText !== null && (
+                <StreamingStatus
+                  phase={generationPhase}
+                  message={generationMessage}
+                  reportedProgress={generationProgress}
+                  onCancel={cancelGeneration}
                 />
               )}
-            </div>
-          </section>
-        )}
+            </section>
+          )}
 
-        {isGalleryView && (
-          <WorldviewFeedback
-            isVisible={!!galleryData && !isLoading && galleryContext?.worldviewValue === 'CUSTOM'}
-            isFetching={isFetchingFeedback}
-            feedback={worldviewFeedback}
-            onFetchFeedback={fetchWorldviewFeedback}
-          />
-        )}
+          {isGalleryView && galleryData && !isLoading && (
+            <section
+              className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-xl shadow-slate-200/60 animate-fade-in"
+              aria-labelledby="gallery-content-title"
+            >
+              <GalleryHeader
+                galleryTitle={galleryData.galleryTitle}
+                worldlineId={galleryContext?.worldlineId}
+                sources={galleryData.sources}
+              />
+              <div className="min-h-[500px] bg-slate-50/30 p-4 md:p-6">
+                {!!galleryData.warnings?.length && (
+                  <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-slate-800">
+                    <p className="mb-2 font-semibold">생성 단계 기록</p>
+                    <ul aria-label="갤러리 생성 경고" className="space-y-2">
+                      {galleryData.warnings.map((warning, index) => (
+                        <li key={`${warning.code}-${warning.postId}-${index}`}>
+                          <span className="mr-2 font-semibold">
+                            {warning.stage === 'evaluation'
+                              ? '반응 수치 평가 실패'
+                              : warning.stage === 'comments'
+                                ? '댓글 생성 실패'
+                                : '생성 안내'}
+                          </span>
+                          {warning.postId && (
+                            <button
+                              className="mr-2 underline"
+                              onClick={() => handleSelectPost(warning.postId!)}
+                            >
+                              {galleryData.posts.find(post => post.id === warning.postId)?.title ??
+                                '게시물'}
+                            </button>
+                          )}
+                          {warning.message}
+                        </li>
+                      ))}
+                    </ul>
+                    {galleryData.warnings.some(
+                      warning =>
+                        warning.postId &&
+                        (warning.stage === 'evaluation' || warning.stage === 'comments'),
+                    ) && (
+                      <button
+                        type="button"
+                        disabled={isAddingComment || isSavingUserPost || isLoading}
+                        className="mt-3 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:opacity-50"
+                        onClick={() => void retryFailedStages()}
+                      >
+                        실패 지점에서 재시도
+                      </button>
+                    )}
+                  </div>
+                )}
+                {galleryContext && (
+                  <div className="mb-4">
+                    <FixedNicknameSettings
+                      value={galleryContext.fixedNicknames ?? []}
+                      onSave={saveFixedNicknames}
+                      reservedNickname={
+                        currentUserProfile?.nicknameType === 'FIXED'
+                          ? currentUserProfile.nickname
+                          : undefined
+                      }
+                      disabled={isLoading || isSavingUserPost || isAddingComment}
+                    />
+                  </div>
+                )}
+                {galleryContext && !galleryContext.useSearch && (
+                  <WorldlineMemory
+                    key={galleryContext.worldlineId}
+                    notes={galleryContext.continuityNotes ?? ''}
+                    currentEvent={galleryContext.discussionContext}
+                    disabled={isLoading || isSavingUserPost || isAddingComment}
+                    onSave={saveContinuityNotes}
+                    onContinue={nextEvent => {
+                      if (!currentUserProfile) return;
+                      void createGallery(
+                        {
+                          ...galleryContext,
+                          discussionContext: nextEvent || galleryContext.discussionContext,
+                          userProfile: currentUserProfile,
+                        },
+                        true,
+                      ).then(created => {
+                        if (created) navigate('gallery-list');
+                      });
+                    }}
+                  />
+                )}
+                <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+                  <h2
+                    id="gallery-content-title"
+                    tabIndex={-1}
+                    className="text-lg font-bold text-slate-800 outline-none"
+                  >
+                    {view === 'post' ? '게시물 보기' : '게시물 목록'}
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={handleOpenSetup}
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  >
+                    <i className="fas fa-sliders-h mr-2" aria-hidden="true" />
+                    현재 설정으로 새 갤러리 만들기
+                  </button>
+                </div>
 
-        {galleryData && (
-          <WritePostModal
-            isOpen={isWriteModalOpen}
-            currentUserProfile={currentUserProfile}
-            onClose={closeWriteModal}
-            onSave={handleSavePost}
-            isSaving={isSavingUserPost}
-            submissionError={error}
-          />
-        )}
-      </main>
+                {view === 'post' && selectedPost ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleBackToList}
+                      className="group mb-6 flex items-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                      aria-label="게시물 목록으로 돌아가기"
+                    >
+                      <i
+                        className="fas fa-arrow-left mr-2 transition-transform group-hover:-translate-x-1"
+                        aria-hidden="true"
+                      />{' '}
+                      목록으로
+                    </button>
+                    <PostView
+                      post={selectedPost}
+                      currentUserProfile={currentUserProfile}
+                      onBackToList={handleBackToList}
+                      onWritePost={handleOpenWriteModal}
+                      onAddComment={addUserComment}
+                      isAddingComment={isAddingComment}
+                      maxComments={MAX_TOTAL_COMMENTS_PER_POST}
+                      highlightedCommentIds={highlightedCommentIds}
+                      onVotePost={votePost}
+                      onVoteComment={voteComment}
+                    />
+                    {failedReactionList
+                      .filter(failure => failure.postId === selectedPost.id)
+                      .map(failure => (
+                        <div
+                          key={failure.commentId}
+                          className="mt-4 space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-4"
+                          role="status"
+                        >
+                          <p className="text-sm font-semibold text-slate-800">
+                            실패 단계: 사용자 댓글의 AI 후속 반응 ·{' '}
+                            {new Date(failure.failedAt).toLocaleTimeString('ko-KR')}
+                          </p>
+                          <p className="text-sm text-slate-700">
+                            대상 댓글:{' '}
+                            {
+                              selectedPost.comments.find(
+                                comment => comment.id === failure.commentId,
+                              )?.text
+                            }
+                          </p>
+                          <p className="text-sm text-slate-800">
+                            AI 반응 생성 실패: {failure.message}
+                          </p>
+                          {failure.reconnect && (
+                            <button
+                              className="mr-3 rounded border border-slate-300 bg-white px-3 py-2 text-sm"
+                              onClick={handleOpenSetup}
+                            >
+                              연결 설정 확인
+                            </button>
+                          )}
+                          <button
+                            disabled={isAddingComment || !failure.retryable}
+                            className="rounded border border-slate-300 bg-white px-3 py-2 text-sm disabled:opacity-50"
+                            onClick={() => void retryReaction(selectedPost.id, failure.commentId)}
+                          >
+                            AI 반응 다시 생성
+                          </button>
+                        </div>
+                      ))}
+                  </>
+                ) : (
+                  <PostList
+                    galleryId={galleryContext?.worldlineId}
+                    posts={galleryData.posts}
+                    onSelectPost={handleSelectPost}
+                    onWritePost={handleOpenWriteModal}
+                  />
+                )}
+              </div>
+            </section>
+          )}
 
-      <footer className="mt-16 border-t border-slate-200/60 py-8 text-center text-sm text-slate-600">
-        <p className="mb-2 font-medium">&copy; {new Date().getFullYear()} AI Gallery Generator</p>
-        <p className="text-xs">Powered by Gemini API &amp; Google Cloud Vertex AI</p>
-      </footer>
-    </div>
+          {isGalleryView && (
+            <WorldviewFeedback
+              isVisible={!!galleryData && !isLoading && galleryContext?.worldviewValue === 'CUSTOM'}
+              isFetching={isFetchingFeedback}
+              feedback={worldviewFeedback}
+              onFetchFeedback={fetchWorldviewFeedback}
+            />
+          )}
+
+          {galleryData && (
+            <WritePostModal
+              isOpen={isWriteModalOpen}
+              currentUserProfile={currentUserProfile}
+              onClose={closeWriteModal}
+              onSave={handleSavePost}
+              isSaving={isSavingUserPost}
+              submissionError={error}
+            />
+          )}
+        </main>
+
+        <footer className="mt-16 border-t border-slate-200/60 py-8 text-center text-sm text-slate-600">
+          <p className="mb-2 font-medium">&copy; {new Date().getFullYear()} AI Gallery Generator</p>
+          <p className="text-xs">Powered by Gemini API &amp; Google Cloud Vertex AI</p>
+        </footer>
+      </div>
+    </GalleryFormProvider>
   );
 };
 

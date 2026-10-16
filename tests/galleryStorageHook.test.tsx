@@ -7,6 +7,7 @@ import {
   CORRUPT_SESSION_STORAGE_WARNING,
   SEARCH_SESSION_STORAGE_WARNING,
   SESSION_STORAGE_KEY,
+  SESSION_CONFLICT_WARNING,
   useGalleryStorage,
 } from '../hooks/useGalleryStorage';
 import type { GalleryContextParams, GalleryData, UserProfile } from '../types';
@@ -60,6 +61,7 @@ describe('useGalleryStorage', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it('atomically replaces a session and exposes navigation helpers', async () => {
@@ -74,7 +76,6 @@ describe('useGalleryStorage', () => {
 
     act(() => result.current.selectPost('p1'));
     expect(result.current.selectedPostId).toBe('p1');
-    expect(window.scrollTo).toHaveBeenCalledWith(0, 0);
 
     act(() => result.current.backToList());
     expect(result.current.selectedPostId).toBeNull();
@@ -225,5 +226,176 @@ describe('useGalleryStorage', () => {
     await waitFor(() => expect(result.current.storageWarning).toMatch(/저장되지 않았/));
     expect(result.current.galleryData).toEqual(gallery);
     expect(setItem).toHaveBeenCalled();
+  });
+  it('does not rewrite a restored session merely by opening a second tab', () => {
+    const first = renderHook(() => useGalleryStorage());
+    act(() => first.result.current.replaceSession(gallery, context, profile));
+    const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+    const setItem = vi.spyOn(Storage.prototype, 'setItem');
+    const second = renderHook(() => useGalleryStorage());
+    expect(second.result.current.galleryData).toEqual(gallery);
+    expect(localStorage.getItem(SESSION_STORAGE_KEY)).toBe(raw);
+    expect(setItem).not.toHaveBeenCalled();
+  });
+
+  it('blocks a stale tab write even before its storage event arrives and keeps its edits in memory', () => {
+    const first = renderHook(() => useGalleryStorage());
+    act(() => first.result.current.replaceSession(gallery, context, profile));
+    const second = renderHook(() => useGalleryStorage());
+    act(() =>
+      first.result.current.setGalleryData(previous => ({
+        ...previous!,
+        galleryTitle: '첫 탭 변경',
+      })),
+    );
+    const latestRaw = localStorage.getItem(SESSION_STORAGE_KEY);
+    act(() =>
+      second.result.current.setGalleryData(previous => ({
+        ...previous!,
+        galleryTitle: '두 번째 탭 변경',
+      })),
+    );
+    expect(second.result.current.galleryData?.galleryTitle).toBe('두 번째 탭 변경');
+    expect(second.result.current.storageWarning).toBe(SESSION_CONFLICT_WARNING);
+    expect(localStorage.getItem(SESSION_STORAGE_KEY)).toBe(latestRaw);
+    expect(second.result.current.revision).toBe(first.result.current.revision);
+    act(() => second.result.current.replaceSession(gallery, context, profile));
+    expect(localStorage.getItem(SESSION_STORAGE_KEY)).toBe(latestRaw);
+    expect(second.result.current.storageWarning).toBe(SESSION_CONFLICT_WARNING);
+  });
+
+  it('notifies an idle tab about an external change without replacing its in-memory gallery', () => {
+    const hook = renderHook(() => useGalleryStorage());
+    act(() => hook.result.current.replaceSession(gallery, context, profile));
+    const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+    act(() =>
+      window.dispatchEvent(new StorageEvent('storage', { key: 'unrelated', newValue: 'x' })),
+    );
+    act(() =>
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: SESSION_STORAGE_KEY,
+          newValue: raw,
+          storageArea: localStorage,
+        }),
+      ),
+    );
+    act(() =>
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: SESSION_STORAGE_KEY,
+          newValue: 'x',
+          storageArea: sessionStorage,
+        }),
+      ),
+    );
+    expect(hook.result.current.storageWarning).toBeNull();
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+    act(() =>
+      window.dispatchEvent(
+        new StorageEvent('storage', { key: null, newValue: null, storageArea: localStorage }),
+      ),
+    );
+    expect(hook.result.current.storageWarning).toBe(SESSION_CONFLICT_WARNING);
+    expect(hook.result.current.galleryData).toEqual(gallery);
+    act(() => hook.result.current.setCurrentUserProfile({ ...profile, nickname: '로컬 수정' }));
+    expect(localStorage.getItem(SESSION_STORAGE_KEY)).toBeNull();
+    expect(hook.result.current.currentUserProfile?.nickname).toBe('로컬 수정');
+  });
+  it('serializes competing tab saves under one lock and rejects the later stale snapshot', async () => {
+    localStorage.setItem(
+      SESSION_STORAGE_KEY,
+      JSON.stringify({
+        version: 2,
+        revision: 1,
+        savedAt: '2026-10-03T00:00:00.000Z',
+        gallery,
+        context,
+        profile,
+      }),
+    );
+    const queued: (() => void)[] = [];
+    const request = vi.fn(
+      (_name: string, callback: () => void) =>
+        new Promise<void>(resolve => {
+          queued.push(() => {
+            callback();
+            resolve();
+          });
+        }),
+    );
+    vi.stubGlobal('navigator', { locks: { request } });
+    const first = renderHook(() => useGalleryStorage());
+    const second = renderHook(() => useGalleryStorage());
+    const original = localStorage.getItem(SESSION_STORAGE_KEY);
+    act(() =>
+      first.result.current.setGalleryData(previous => ({
+        ...previous!,
+        galleryTitle: '먼저 저장할 탭',
+      })),
+    );
+    act(() =>
+      second.result.current.setGalleryData(previous => ({
+        ...previous!,
+        galleryTitle: '나중에 저장할 탭',
+      })),
+    );
+    expect(request.mock.calls.map(call => call[0])).toEqual([
+      SESSION_STORAGE_KEY,
+      SESSION_STORAGE_KEY,
+    ]);
+    expect(localStorage.getItem(SESSION_STORAGE_KEY)).toBe(original);
+    await act(async () => queued.shift()!());
+    const saved = localStorage.getItem(SESSION_STORAGE_KEY);
+    expect(JSON.parse(saved!).gallery.galleryTitle).toBe('먼저 저장할 탭');
+    await act(async () => queued.shift()!());
+    expect(localStorage.getItem(SESSION_STORAGE_KEY)).toBe(saved);
+    expect(second.result.current.storageWarning).toBe(SESSION_CONFLICT_WARNING);
+    expect(second.result.current.galleryData?.galleryTitle).toBe('나중에 저장할 탭');
+  });
+
+  it('skips a queued save after a newer render or unmount instead of persisting an obsolete snapshot', async () => {
+    const queued: (() => void)[] = [];
+    vi.stubGlobal('navigator', {
+      locks: {
+        request: vi.fn(
+          (_name: string, callback: () => void) =>
+            new Promise<void>(resolve => {
+              queued.push(() => {
+                callback();
+                resolve();
+              });
+            }),
+        ),
+      },
+    });
+    const hook = renderHook(() => useGalleryStorage());
+    act(() => hook.result.current.replaceSession(gallery, context, profile));
+    act(() =>
+      hook.result.current.setGalleryData(previous => ({
+        ...previous!,
+        galleryTitle: '마지막 수정',
+      })),
+    );
+    await act(async () => queued.shift()!());
+    expect(localStorage.getItem(SESSION_STORAGE_KEY)).toBeNull();
+    await act(async () => queued.shift()!());
+    const saved = localStorage.getItem(SESSION_STORAGE_KEY);
+    expect(JSON.parse(saved!).gallery.galleryTitle).toBe('마지막 수정');
+    act(() => hook.result.current.setGalleryData(null));
+    hook.unmount();
+    await act(async () => queued.shift()!());
+    expect(localStorage.getItem(SESSION_STORAGE_KEY)).toBe(saved);
+  });
+
+  it('preserves memory and reports lock failure without falling back to an unlocked write', async () => {
+    vi.stubGlobal('navigator', {
+      locks: { request: vi.fn().mockRejectedValue(new Error('lock unavailable')) },
+    });
+    const hook = renderHook(() => useGalleryStorage());
+    act(() => hook.result.current.replaceSession(gallery, context, profile));
+    await waitFor(() => expect(hook.result.current.storageWarning).toContain('자동 저장 잠금'));
+    expect(localStorage.getItem(SESSION_STORAGE_KEY)).toBeNull();
+    expect(hook.result.current.galleryData).toEqual(gallery);
   });
 });

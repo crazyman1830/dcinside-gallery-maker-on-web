@@ -22,6 +22,7 @@ import {
   galleryContextSchema,
   gallerySessionV2Schema,
   generationWarningSchema,
+  reactionFailureSchema,
   userProfileSchema,
 } from '../schemas';
 import { migrateTimestamp, timestampToEpoch } from '../utils/common';
@@ -35,6 +36,9 @@ export const BLOCKED_SEARCH_SESSION_WARNING =
   '저장된 Google 검색 갤러리는 필수 표시 정보를 함께 복원할 수 없어 열지 않았습니다. 브라우저의 원본 데이터는 보존했습니다.';
 export const CORRUPT_SESSION_STORAGE_WARNING =
   '저장된 갤러리 데이터를 복원하지 못했습니다. 브라우저의 원본 데이터는 보존했습니다.';
+
+export const SESSION_CONFLICT_WARNING =
+  '다른 탭에서 저장된 갤러리가 변경되어 이 탭의 자동 저장을 중단했습니다. 현재 내용은 이 탭에 유지됩니다. 필요한 내용을 JSON으로 내보낸 뒤 새로고침하여 최신 저장 내용을 확인해주세요.';
 
 interface GalleryStorageState {
   galleryData: GalleryData | null;
@@ -93,6 +97,7 @@ const migrateComment = (value: unknown, fallbackEpoch: number): Comment | null =
         }
       : undefined;
   const voted = migrateVote(value.voted);
+  const reactionFailure = reactionFailureSchema.safeParse(value.reactionFailure);
   return {
     id: value.id.trim().slice(0, 256),
     author: value.author.trim().slice(0, 64),
@@ -105,6 +110,7 @@ const migrateComment = (value: unknown, fallbackEpoch: number): Comment | null =
     nonRecommendations,
     ...(voted !== undefined ? { voted } : {}),
     ...(reply ? { replyTo: reply } : {}),
+    ...(reactionFailure.success ? { reactionFailure: reactionFailure.data } : {}),
   };
 };
 
@@ -212,6 +218,10 @@ export const migrateGalleryContext = (value: unknown): GalleryContextParams | nu
     selectedModel: model,
     useSearch: value.useSearch,
     userProfile: value.userProfile,
+    ...(value.fixedNicknames !== undefined ? { fixedNicknames: value.fixedNicknames } : {}),
+    ...(typeof value.continuityNotes === 'string'
+      ? { continuityNotes: value.continuityNotes }
+      : {}),
   };
   // Persisted context has one extra local-only field that is never sent to AI.
   const result = galleryContextSchema.safeParse(candidate);
@@ -258,15 +268,19 @@ const parseStoredValue = (storage: Storage, key: string): unknown => {
   }
 };
 
+const serializeStoredSession = (session: GallerySessionV2): string => {
+  const gallery: PersistedGalleryData = {
+    galleryTitle: session.gallery.galleryTitle,
+    posts: session.gallery.posts,
+    ...(session.gallery.warnings ? { warnings: session.gallery.warnings } : {}),
+  };
+  return JSON.stringify({ ...session, gallery });
+};
+
 export const persistGallerySession = (storage: Storage, session: GallerySessionV2): boolean => {
   if (session.context.useSearch) return false;
   try {
-    const gallery: PersistedGalleryData = {
-      galleryTitle: session.gallery.galleryTitle,
-      posts: session.gallery.posts,
-      ...(session.gallery.warnings ? { warnings: session.gallery.warnings } : {}),
-    };
-    storage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ ...session, gallery }));
+    storage.setItem(SESSION_STORAGE_KEY, serializeStoredSession(session));
     return true;
   } catch {
     return false;
@@ -355,50 +369,106 @@ export const loadGalleryStorageState = (storage: Storage): GalleryStorageState =
   loadGalleryStorageResult(storage).state;
 
 export const useGalleryStorage = () => {
-  const [initialLoad] = useState<GalleryStorageLoadResult>(() => {
+  const [initialLoad] = useState<GalleryStorageLoadResult & { storedRaw: string | null }>(() => {
     try {
-      return loadGalleryStorageResult(localStorage);
+      const result = loadGalleryStorageResult(localStorage);
+      return { ...result, storedRaw: localStorage.getItem(SESSION_STORAGE_KEY) };
     } catch {
-      return { state: EMPTY_STATE, storageWarning: null, preserveStoredSession: false };
+      return {
+        state: EMPTY_STATE,
+        storageWarning:
+          '브라우저 저장소를 읽지 못했습니다. 현재 화면의 내용은 별도로 내보내주세요.',
+        preserveStoredSession: true,
+        storedRaw: null,
+      };
     }
   });
   const [state, setState] = useState<GalleryStorageState>(initialLoad.state);
   const [storageWarning, setStorageWarning] = useState<string | null>(initialLoad.storageWarning);
   const preserveStoredSessionRef = useRef(initialLoad.preserveStoredSession);
+  const storedRawRef = useRef(initialLoad.storedRaw);
+  const storageConflictRef = useRef(false);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
 
   useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== null && event.key !== SESSION_STORAGE_KEY) return;
+      if (event.storageArea && event.storageArea !== localStorage) return;
+      if (event.newValue === storedRawRef.current) return;
+      storageConflictRef.current = true;
+      setStorageWarning(SESSION_CONFLICT_WARNING);
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
+
+  useEffect(() => {
+    if (storageConflictRef.current || state === initialLoad.state) return;
     if (state.galleryContext?.useSearch) {
       preserveStoredSessionRef.current = true;
       setStorageWarning(SEARCH_SESSION_STORAGE_WARNING);
       return;
     }
-    if (!state.galleryData || !state.galleryContext) {
-      if (preserveStoredSessionRef.current) return;
-      try {
-        localStorage.removeItem(SESSION_STORAGE_KEY);
-      } catch {
-        setStorageWarning(
-          '브라우저 저장소를 갱신하지 못했습니다. 현재 화면에서는 계속 사용할 수 있습니다.',
-        );
+    let cancelled = false;
+    const save = () => {
+      // A queued lock may be granted after a newer state or another tab has taken over.
+      if (cancelled || storageConflictRef.current) return;
+      if (!state.galleryData || !state.galleryContext) {
+        if (preserveStoredSessionRef.current) return;
+        try {
+          if (localStorage.getItem(SESSION_STORAGE_KEY) !== storedRawRef.current) {
+            storageConflictRef.current = true;
+            setStorageWarning(SESSION_CONFLICT_WARNING);
+            return;
+          }
+          localStorage.removeItem(SESSION_STORAGE_KEY);
+          storedRawRef.current = null;
+        } catch {
+          setStorageWarning(
+            '브라우저 저장소를 갱신하지 못했습니다. 현재 화면에서는 계속 사용할 수 있습니다.',
+          );
+        }
+        return;
       }
-      return;
-    }
-    preserveStoredSessionRef.current = false;
-    const session: GallerySessionV2 = {
-      version: 2,
-      revision: state.revision,
-      savedAt: new Date().toISOString(),
-      gallery: state.galleryData,
-      context: state.galleryContext,
-      profile: state.currentUserProfile,
+      preserveStoredSessionRef.current = false;
+      const session: GallerySessionV2 = {
+        version: 2,
+        revision: state.revision,
+        savedAt: new Date().toISOString(),
+        gallery: state.galleryData,
+        context: state.galleryContext,
+        profile: state.currentUserProfile,
+      };
+      try {
+        if (localStorage.getItem(SESSION_STORAGE_KEY) !== storedRawRef.current) {
+          storageConflictRef.current = true;
+          setStorageWarning(SESSION_CONFLICT_WARNING);
+          return;
+        }
+        const raw = serializeStoredSession(session);
+        localStorage.setItem(SESSION_STORAGE_KEY, raw);
+        storedRawRef.current = raw;
+        setStorageWarning(null);
+      } catch {
+        setStorageWarning('브라우저 저장 공간이 부족해 현재 변경 내용이 저장되지 않았습니다.');
+      }
     };
-    setStorageWarning(
-      persistGallerySession(localStorage, session)
-        ? null
-        : '브라우저 저장 공간이 부족해 현재 변경 내용이 저장되지 않았습니다.',
-    );
-  }, [state]);
+    if (navigator.locks?.request) {
+      // All current-session writers use the same origin-scoped exclusive lock.
+      void navigator.locks.request(SESSION_STORAGE_KEY, save).catch(() => {
+        if (!cancelled && !storageConflictRef.current) {
+          setStorageWarning(
+            '자동 저장 잠금을 얻지 못해 현재 변경 내용이 저장되지 않았습니다. 필요한 내용은 JSON으로 내보내주세요.',
+          );
+        }
+      });
+    } else {
+      save();
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [state, initialLoad.state]);
 
   const setGalleryData: Dispatch<SetStateAction<GalleryData | null>> = useCallback(value => {
     setState(previous => ({
@@ -449,12 +519,10 @@ export const useGalleryStorage = () => {
 
   const selectPost = useCallback((postId: string) => {
     setSelectedPostId(postId);
-    window.scrollTo(0, 0);
   }, []);
 
   const backToList = useCallback(() => {
     setSelectedPostId(null);
-    window.scrollTo(0, 0);
   }, []);
 
   return useMemo(

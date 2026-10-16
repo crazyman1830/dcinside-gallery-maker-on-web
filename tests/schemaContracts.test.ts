@@ -3,8 +3,10 @@ import {
   addUserPostRequestSchema,
   commentSchema,
   createGalleryParamsSchema,
+  createGalleryRequestSchema,
   followUpCommentsRequestSchema,
   galleryContextSchema,
+  galleryContinuationContextSchema,
   galleryDataSchema,
   gallerySessionV2Schema,
   geminiCommentContentSchema,
@@ -69,6 +71,55 @@ const searchEntryPoint = {
 } as const;
 
 describe('shared runtime schemas', () => {
+  it('accepts bounded continuation evidence only in gallery generation requests', () => {
+    const continuationContext = {
+      galleryTitle: '기존 갤러리',
+      totalPostCount: 9,
+      recentPosts: Array.from({ length: 6 }, (_, index) => ({
+        title: `이전 제목 ${index}`,
+        author: '작성자',
+        contentExcerpt: '본'.repeat(300),
+      })),
+    };
+    const generationRequest = {
+      ...requestContext,
+      continuityNotes: '설'.repeat(2000),
+      continuationContext,
+    };
+    expect(createGalleryRequestSchema.safeParse(generationRequest).success).toBe(true);
+    expect(createGalleryRequestSchema.safeParse(requestContext).success).toBe(true);
+    expect(createGalleryParamsSchema.safeParse(generationRequest).success).toBe(false);
+    expect(
+      galleryContextSchema.safeParse({ ...generationRequest, worldlineId: context.worldlineId })
+        .success,
+    ).toBe(false);
+    expect(
+      addUserPostRequestSchema.safeParse({
+        newPostData: { title: 't', author: 'a', content: 'c' },
+        galleryContext: generationRequest,
+      }).success,
+    ).toBe(false);
+    for (const invalid of [
+      { ...continuationContext, totalPostCount: 2 },
+      { ...continuationContext, totalPostCount: 201 },
+      { ...continuationContext, recentPosts: continuationContext.recentPosts.slice(0, 5) },
+      {
+        ...continuationContext,
+        recentPosts: [...continuationContext.recentPosts, continuationContext.recentPosts[0]],
+      },
+      {
+        ...continuationContext,
+        recentPosts: continuationContext.recentPosts.map(post => ({
+          ...post,
+          contentExcerpt: '본'.repeat(301),
+        })),
+      },
+      { ...continuationContext, sources: [{ uri: 'https://example.test/' }] },
+    ]) {
+      expect(galleryContinuationContextSchema.safeParse(invalid).success).toBe(false);
+    }
+  });
+
   it('normalizes a valid request and rejects unknown API fields', () => {
     expect(createGalleryParamsSchema.parse(requestContext).topic).toBe('주제');
     expect(createGalleryParamsSchema.safeParse(context).success).toBe(false);

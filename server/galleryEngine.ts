@@ -4,6 +4,7 @@ import type {
   AddUserPostResponse,
   Comment,
   CreateGalleryParams,
+  CreateGalleryRequest,
   FollowUpPostContext,
   GalleryData,
   GenerationWarning,
@@ -36,7 +37,9 @@ import {
 import { parseGeminiResponse } from '../utils/jsonParser';
 import {
   evaluatePost,
+  evaluatePostsBatch,
   generateComments,
+  generateCommentsBatch,
   generateFeedback,
   generateFollowUpComments,
   MalformedAiResponseError,
@@ -51,6 +54,7 @@ export interface GenerationCallbacks {
   onChunk: (text: string) => void | Promise<void>;
   onPhase: (phase: Phase, message: string, progress: number) => void | Promise<void>;
   onWarning?: (warning: GenerationWarning) => void | Promise<void>;
+  onCheckpoint?: (data: GalleryData) => void | Promise<void>;
 }
 
 export const MAX_RAW_GALLERY_RESPONSE_CHARS = 1_048_576;
@@ -93,24 +97,6 @@ const isFatalEnrichmentError = (error: unknown): boolean => {
     return true;
   return [401, 403, 404, 499, 504].includes(errorStatus(error) ?? 0);
 };
-
-const isProviderOutageError = (error: unknown): boolean => {
-  if (
-    error instanceof MalformedAiResponseError ||
-    (error as { code?: unknown })?.code === 'MALFORMED_AI_RESPONSE'
-  ) {
-    return false;
-  }
-  const status = errorStatus(error);
-  return status === 429 || (status !== undefined && status >= 500 && status <= 599);
-};
-
-class EnrichmentCircuitOpenError extends Error {
-  constructor() {
-    super('AI 공급자 장애로 남은 게시물 보강을 건너뜁니다.');
-    this.name = 'EnrichmentCircuitOpenError';
-  }
-}
 
 interface LinkedAbort {
   controller: AbortController;
@@ -311,6 +297,8 @@ const toPromptContext = (params: CreateGalleryParams): PromptContext => ({
   ageRangeValue: params.ageRangeValue,
   useSearch: params.useSearch,
   userProfile: params.userProfile,
+  ...(params.fixedNicknames ? { fixedNicknames: params.fixedNicknames } : {}),
+  ...(params.continuityNotes ? { continuityNotes: params.continuityNotes } : {}),
 });
 
 const toComments = (
@@ -329,15 +317,31 @@ const toComments = (
     nonRecommendations: comment.nonRecommendations ?? Math.floor(Math.random() * 5),
   }));
 
+const makeEnrichmentWarning = (
+  stage: 'evaluation' | 'comments',
+  postId: string,
+): GenerationWarning => ({
+  code: stage === 'evaluation' ? 'POST_EVALUATION_FALLBACK' : 'POST_COMMENTS_FALLBACK',
+  message:
+    stage === 'evaluation'
+      ? '게시물 반응 수치를 생성하지 못했습니다. 해당 단계만 다시 생성할 수 있습니다.'
+      : 'AI 댓글을 생성하지 못했습니다. 해당 단계만 다시 생성할 수 있습니다.',
+  stage,
+  postId,
+});
+
 export const createGallery = async (
   ai: GoogleGenAI,
-  params: CreateGalleryParams,
+  params: CreateGalleryRequest,
   callbacks: GenerationCallbacks,
   signal?: AbortSignal,
 ): Promise<GalleryData> => {
   const context = toPromptContext(params);
+  const generationContext: PromptContext = params.continuationContext
+    ? { ...context, continuationContext: params.continuationContext }
+    : context;
   await callbacks.onPhase('gallery', '갤러리 게시물을 생성하고 있습니다.', 20);
-  const stream = await streamGalleryGeneration(ai, context, params.selectedModel, signal);
+  const stream = await streamGalleryGeneration(ai, generationContext, params.selectedModel, signal);
   const sources: GroundingSource[] = [];
   let overflowedSources = 0;
   let responseText = '';
@@ -375,7 +379,13 @@ export const createGallery = async (
     if (params.useSearch) throw new MalformedAiResponseError(firstError);
     try {
       generatedGallery = parseGeminiResponse(
-        await repairGalleryGeneration(ai, context, params.selectedModel, signal),
+        await repairGalleryGeneration(
+          ai,
+          generationContext,
+          params.selectedModel,
+          signal,
+          firstError,
+        ),
       );
     } catch (repairError) {
       throw new MalformedAiResponseError(repairError ?? firstError);
@@ -386,142 +396,120 @@ export const createGallery = async (
   }
 
   await callbacks.onPhase('posts', '게시물 반응과 댓글을 생성하고 있습니다.', 60);
-  const posts: Post[] = [];
   const warnings: GenerationWarning[] = [];
-  const evaluationModel = EVALUATION_MODEL_BY_PROVIDER[params.selectedProvider];
-  let evaluationCircuitOpen = false;
-  let commentsCircuitOpen = false;
-
-  for (const [postIndex, generatedPost] of generatedGallery.posts
+  const posts: Post[] = generatedGallery.posts
     .slice(0, NUMBER_OF_POSTS)
-    .entries()) {
-    if (signal?.aborted) throw new DOMException('The request was aborted.', 'AbortError');
-    const isBest = postIndex === 0;
-    const postId = makeId('post');
-    const postAuthor = sanitizeGeneratedPostAuthor(generatedPost.author, postIndex, context);
-    const minComments = isBest ? MIN_COMMENTS_PER_BEST_POST : MIN_COMMENTS_PER_POST;
-    const maxComments = isBest ? MAX_COMMENTS_PER_BEST_POST : MAX_COMMENTS_PER_POST;
-
-    const enrichmentAbort = makeLinkedAbortController(signal);
-    const enrichmentSignal = enrichmentAbort.controller.signal;
-    const cancelSiblingOnFatal = async <T>(operation: Promise<T>): Promise<T> => {
-      try {
-        return await raceWithAbort(operation, enrichmentSignal);
-      } catch (error) {
-        if (isFatalEnrichmentError(error) && !enrichmentAbort.controller.signal.aborted) {
-          enrichmentAbort.controller.abort(error);
-        }
-        throw error;
-      }
+    .map((generatedPost, index) => ({
+      id: makeId('post'),
+      isBestPost: index === 0,
+      title: generatedPost.title,
+      author: sanitizeGeneratedPostAuthor(generatedPost.author, index, context),
+      timestamp: getDetailedTimestamp(Math.random() * 60 * 60 * 1_000 * (index + 1)),
+      content: generatedPost.content,
+      views: 0,
+      recommendations: 0,
+      nonRecommendations: 0,
+      comments: [],
+    }));
+  const commentRequests = posts.map(post => {
+    const minimum = post.isBestPost ? MIN_COMMENTS_PER_BEST_POST : MIN_COMMENTS_PER_POST;
+    const maximum = post.isBestPost ? MAX_COMMENTS_PER_BEST_POST : MAX_COMMENTS_PER_POST;
+    return {
+      ...post,
+      requestedCommentCount: minimum + Math.floor(Math.random() * (maximum - minimum + 1)),
     };
-    const circuitError = new EnrichmentCircuitOpenError();
-    const [metricsResult, commentsResult] = await Promise.allSettled([
-      evaluationCircuitOpen
-        ? Promise.reject<Awaited<ReturnType<typeof evaluatePost>>>(circuitError)
-        : cancelSiblingOnFatal(
-            evaluatePost(ai, generatedPost, context, evaluationModel, enrichmentSignal),
-          ),
-      commentsCircuitOpen
-        ? Promise.reject<Awaited<ReturnType<typeof generateComments>>>(circuitError)
-        : cancelSiblingOnFatal(
-            generateComments(
-              ai,
-              generatedPost,
-              context,
-              minComments,
-              maxComments,
-              params.selectedModel,
-              enrichmentSignal,
-            ),
-          ),
+  });
+  const completedEvaluations = new Set<string>();
+  const completedComments = new Set<string>();
+  const pendingWarnings = (): GenerationWarning[] =>
+    posts.flatMap(post => [
+      ...(!completedEvaluations.has(post.id) ? [makeEnrichmentWarning('evaluation', post.id)] : []),
+      ...(!completedComments.has(post.id) ? [makeEnrichmentWarning('comments', post.id)] : []),
     ]);
-    enrichmentAbort.dispose();
-    if (metricsResult.status === 'rejected' && isFatalEnrichmentError(metricsResult.reason)) {
-      throw metricsResult.reason;
-    }
-    if (commentsResult.status === 'rejected' && isFatalEnrichmentError(commentsResult.reason)) {
-      throw commentsResult.reason;
-    }
-    if (metricsResult.status === 'rejected' && isProviderOutageError(metricsResult.reason)) {
-      evaluationCircuitOpen = true;
-    }
-    if (commentsResult.status === 'rejected' && isProviderOutageError(commentsResult.reason)) {
-      commentsCircuitOpen = true;
-    }
-
-    const metrics =
-      metricsResult.status === 'fulfilled'
-        ? metricsResult.value
-        : {
-            suggestedViews: 0,
-            suggestedRecommendations: 0,
-            suggestedNonRecommendations: 0,
-          };
-    const generatedComments = commentsResult.status === 'fulfilled' ? commentsResult.value : [];
-
-    if (metricsResult.status === 'rejected') {
-      const warning: GenerationWarning = {
-        code: 'POST_EVALUATION_FALLBACK',
-        message: '일부 게시물 반응 수치를 기본값으로 대체했습니다.',
-        stage: 'evaluation',
-        postId,
-      };
-      warnings.push(warning);
-      await callbacks.onWarning?.(warning);
-    }
-    if (commentsResult.status === 'rejected') {
-      const warning: GenerationWarning = {
-        code: 'POST_COMMENTS_FALLBACK',
-        message: '일부 게시물 댓글을 기본 댓글로 대체했습니다.',
-        stage: 'comments',
-        postId,
-      };
-      warnings.push(warning);
-      await callbacks.onWarning?.(warning);
-    }
-    const comments = toComments(generatedComments, postId, postAuthor, isBest, context);
-    while (comments.length < minComments) {
-      comments.push({
-        id: makeId(`comment-fallback-${postId}`),
-        author: ensureUniqueCommentAuthor(
-          `자동댓글${comments.length + 1}`,
-          postAuthor,
-          comments.length,
-          context,
-        ),
-        text: isBest ? '이 글은 좀 개념글 감이다.' : '그럴 수도 있겠네.',
-        timestamp: getCurrentTimestamp(),
-        recommendations: 0,
-        nonRecommendations: 0,
-      });
-    }
-
-    posts.push({
-      id: postId,
-      isBestPost: isBest,
-      title: generatedPost.title || `${params.topic} 게시물 #${postIndex + 1}`,
-      author: postAuthor,
-      timestamp: getDetailedTimestamp(Math.random() * 60 * 60 * 1_000 * (postIndex + 1)),
-      content: generatedPost.content || '게시물 내용이 없습니다.',
-      views: metrics.suggestedViews,
-      recommendations: metrics.suggestedRecommendations,
-      nonRecommendations: metrics.suggestedNonRecommendations,
-      comments,
+  const snapshot = (): GalleryData => ({
+    galleryTitle: generatedGallery.galleryTitle,
+    posts: posts.map(post => ({ ...post, comments: [...post.comments] })),
+    warnings: pendingWarnings(),
+  });
+  // These snapshots are recovery data only; the UI continues to wait for the
+  // final result. Grounded responses remain atomic and never emit checkpoints.
+  if (!params.useSearch) await callbacks.onCheckpoint?.(snapshot());
+  let checkpointQueue = Promise.resolve();
+  let checkpointFailure: unknown;
+  const enqueueCheckpoint = (): void => {
+    if (params.useSearch || !callbacks.onCheckpoint) return;
+    const data = snapshot();
+    checkpointQueue = checkpointQueue.then(async () => {
+      if (signal?.aborted || checkpointFailure) return;
+      try {
+        await callbacks.onCheckpoint?.(data);
+      } catch (error) {
+        // Transport failures must never become provider retries or warnings.
+        checkpointFailure = error;
+      }
     });
-
-    const completedPostCount = postIndex + 1;
-    const totalPostCount = Math.min(NUMBER_OF_POSTS, generatedGallery.posts.length);
-    await callbacks.onPhase(
-      'posts',
-      `게시물 반응과 댓글을 생성하고 있습니다. (${completedPostCount}/${totalPostCount})`,
-      60 + Math.round((completedPostCount / totalPostCount) * 35),
-    );
-
-    if (postIndex < Math.min(NUMBER_OF_POSTS, generatedGallery.posts.length) - 1) {
-      await new Promise(resolve => setTimeout(resolve, 200));
+  };
+  const enrichmentAbort = makeLinkedAbortController(signal);
+  const enrichmentSignal = enrichmentAbort.controller.signal;
+  const cancelSiblingOnFatal = async <T>(operation: Promise<T>): Promise<T> => {
+    try {
+      return await raceWithAbort(operation, enrichmentSignal);
+    } catch (error) {
+      if (isFatalEnrichmentError(error) && !enrichmentSignal.aborted) {
+        enrichmentAbort.controller.abort(error);
+      }
+      throw error;
     }
+  };
+  try {
+    await Promise.allSettled([
+      cancelSiblingOnFatal(
+        evaluatePostsBatch(
+          ai,
+          posts,
+          context,
+          EVALUATION_MODEL_BY_PROVIDER[params.selectedProvider],
+          enrichmentSignal,
+        ),
+      ).then(metricsByPost => {
+        for (const post of posts) {
+          const metrics = metricsByPost.get(post.id);
+          if (!metrics) continue;
+          post.views = metrics.suggestedViews;
+          post.recommendations = metrics.suggestedRecommendations;
+          post.nonRecommendations = metrics.suggestedNonRecommendations;
+          completedEvaluations.add(post.id);
+        }
+        enqueueCheckpoint();
+      }),
+      cancelSiblingOnFatal(
+        generateCommentsBatch(ai, commentRequests, context, params.selectedModel, enrichmentSignal),
+      ).then(commentsByPost => {
+        for (const post of posts) {
+          const comments = commentsByPost.get(post.id);
+          if (!comments) continue;
+          post.comments = toComments(
+            comments,
+            post.id,
+            post.author,
+            Boolean(post.isBestPost),
+            context,
+          );
+          completedComments.add(post.id);
+        }
+        enqueueCheckpoint();
+      }),
+    ]);
+  } finally {
+    enrichmentAbort.dispose();
   }
-
+  if (signal?.aborted)
+    throw signal.reason ?? new DOMException('The request was aborted.', 'AbortError');
+  await checkpointQueue;
+  if (checkpointFailure) throw checkpointFailure;
+  warnings.push(...pendingWarnings());
+  for (const warning of warnings) await callbacks.onWarning?.(warning);
+  await callbacks.onPhase('posts', '게시물 반응과 댓글 처리가 완료됐습니다.', 95);
   posts.sort((left, right) => timestampToEpoch(right.timestamp) - timestampToEpoch(left.timestamp));
   const normalizedSources = sanitizeGroundingSources(sources);
   if (normalizedSources.dropped + overflowedSources > 0) {
@@ -631,6 +619,97 @@ export const createUserPost = async (
   return { post, warnings };
 };
 
+/** Only our historic generated placeholder signature is safe to replace. */
+const isLegacyFallbackComment = (comment: Comment, postId: string): boolean =>
+  comment.id.startsWith(`comment-fallback-${postId}-`) &&
+  /^자동댓글\d+$/.test(comment.author) &&
+  ['이 글은 좀 개념글 감이다.', '그럴 수도 있겠네.'].includes(comment.text) &&
+  !comment.voted &&
+  !comment.replyTo &&
+  comment.recommendations === 0 &&
+  comment.nonRecommendations === 0;
+
+export const retryPostStage = async (
+  ai: GoogleGenAI,
+  post: Post,
+  stage: 'evaluation' | 'comments',
+  contextParams: CreateGalleryParams,
+  signal?: AbortSignal,
+): Promise<AddUserPostResponse> => {
+  const context = toPromptContext(contextParams);
+  const target = { title: post.title, author: post.author, content: post.content };
+  try {
+    if (stage === 'evaluation') {
+      const metrics = await evaluatePost(
+        ai,
+        target,
+        context,
+        EVALUATION_MODEL_BY_PROVIDER[contextParams.selectedProvider],
+        signal,
+      );
+      const recommendations = metrics.suggestedRecommendations + (post.voted === 'rec' ? 1 : 0);
+      const nonRecommendations =
+        metrics.suggestedNonRecommendations + (post.voted === 'nonrec' ? 1 : 0);
+      return {
+        post: {
+          ...post,
+          views: Math.max(metrics.suggestedViews, recommendations + nonRecommendations),
+          recommendations,
+          nonRecommendations,
+        },
+        warnings: [],
+      };
+    }
+    const referencedComments = new Set(
+      post.comments.flatMap(comment => (comment.replyTo ? [comment.replyTo.commentId] : [])),
+    );
+    const preservedComments = post.comments.filter(
+      comment => referencedComments.has(comment.id) || !isLegacyFallbackComment(comment, post.id),
+    );
+    const remaining = MAX_TOTAL_COMMENTS_PER_POST - preservedComments.length;
+    if (remaining <= 0) {
+      return {
+        post,
+        warnings: [
+          {
+            ...makeEnrichmentWarning(stage, post.id),
+            message: '댓글 상한에 도달해 새 AI 댓글을 생성할 수 없습니다.',
+          },
+        ],
+      };
+    }
+    const minimum = Math.min(
+      remaining,
+      post.isBestPost ? MIN_COMMENTS_PER_BEST_POST : MIN_COMMENTS_PER_POST,
+    );
+    const maximum = Math.min(
+      remaining,
+      post.isBestPost ? MAX_COMMENTS_PER_BEST_POST : MAX_COMMENTS_PER_POST,
+    );
+    const generated = await generateComments(
+      ai,
+      target,
+      context,
+      minimum,
+      maximum,
+      contextParams.selectedModel,
+      signal,
+    );
+    return {
+      post: {
+        ...post,
+        comments: [
+          ...preservedComments,
+          ...toComments(generated, post.id, post.author, Boolean(post.isBestPost), context),
+        ],
+      },
+      warnings: [],
+    };
+  } catch (error) {
+    if (signal?.aborted) throw signal.reason ?? error;
+    return { post, warnings: [makeEnrichmentWarning(stage, post.id)] };
+  }
+};
 export const createFollowUpComments = async (
   ai: GoogleGenAI,
   targetPost: FollowUpPostContext,
@@ -638,6 +717,7 @@ export const createFollowUpComments = async (
   totalCommentCount: number,
   contextParams: CreateGalleryParams,
   signal?: AbortSignal,
+  replyTargetComment?: Comment,
 ): Promise<Comment[]> => {
   const remainingCapacity = Math.max(0, MAX_TOTAL_COMMENTS_PER_POST - totalCommentCount);
   if (remainingCapacity === 0) return [];
@@ -653,6 +733,7 @@ export const createFollowUpComments = async (
     maxComments,
     contextParams.selectedModel,
     signal,
+    replyTargetComment,
   );
   const basePostAuthor = targetPost.author.startsWith(POST_AUTHOR_PREFIX)
     ? targetPost.author.slice(POST_AUTHOR_PREFIX.length)

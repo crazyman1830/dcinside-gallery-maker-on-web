@@ -283,9 +283,11 @@ for (const fixture of fixtures) {
       },
       AbortSignal.timeout(timeoutMs),
     );
+    const generationLatencyMs = performance.now() - startedAt;
+    const generationUsage = { ...usage };
     const scores = await scoreQuality(ai, fixture.params, gallery);
     results.push(
-      evaluateGallery(fixture.name, performance.now() - startedAt, gallery, usage, scores),
+      evaluateGallery(fixture.name, generationLatencyMs, gallery, generationUsage, scores),
     );
   } catch (error) {
     results.push({

@@ -44,6 +44,39 @@ export const userProfileSchema = z
     }
   });
 
+export const fixedNicknameSchema = z
+  .object({
+    id: nonEmptyTrimmed(64),
+    nickname: nonEmptyTrimmed(10).refine(
+      value => value !== 'ㅇㅇ' && !/[()]/.test(value),
+      '고정닉은 익명 닉네임이나 괄호를 사용할 수 없습니다.',
+    ),
+    description: optionalTrimmed(200),
+    speechStyle: optionalTrimmed(120),
+    activity: z.enum(['frequent', 'occasional', 'rare']),
+  })
+  .strict();
+
+export const fixedNicknamesSchema = z
+  .array(fixedNicknameSchema)
+  .max(8)
+  .superRefine((entries, ctx) => {
+    if (new Set(entries.map(entry => entry.id)).size !== entries.length)
+      ctx.addIssue({ code: 'custom', message: '고정닉 ID가 중복됩니다.' });
+    if (new Set(entries.map(entry => entry.nickname.toLocaleLowerCase())).size !== entries.length)
+      ctx.addIssue({ code: 'custom', message: '고정닉 이름은 서로 달라야 합니다.' });
+  });
+
+export const reactionFailureSchema = z
+  .object({
+    message: nonEmptyTrimmed(1000),
+    retryAt: z.number().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    reconnect: z.boolean(),
+    retryable: z.boolean(),
+    failedAt: z.string().datetime({ offset: true }),
+  })
+  .strict();
+
 const worldviewValues = ['NONE', 'MURIM', 'FANTASY', 'CUSTOM'] as const;
 const worldviewEraValues = [
   '',
@@ -84,6 +117,7 @@ const ageRangeSchema = z.union([
 ]);
 
 const createGalleryParamFields = {
+  fixedNicknames: fixedNicknamesSchema.optional(),
   topic: nonEmptyTrimmed(20),
   discussionContext: optionalTrimmed(500),
   worldviewValue: oneOf(worldviewValues),
@@ -102,9 +136,26 @@ const createGalleryParamFields = {
 } as const;
 
 const requireCustomWorldview = (
-  params: { worldviewValue: string; customWorldviewText?: string },
+  params: {
+    worldviewValue: string;
+    customWorldviewText?: string;
+    fixedNicknames?: z.infer<typeof fixedNicknamesSchema>;
+    userProfile?: z.infer<typeof userProfileSchema>;
+  },
   context: z.RefinementCtx,
 ) => {
+  if (
+    params.userProfile?.nicknameType === 'FIXED' &&
+    params.fixedNicknames?.some(
+      entry =>
+        entry.nickname.toLocaleLowerCase() === params.userProfile!.nickname.toLocaleLowerCase(),
+    )
+  )
+    context.addIssue({
+      code: 'custom',
+      path: ['fixedNicknames'],
+      message: '내 닉네임과 AI 고정닉 이름은 달라야 합니다.',
+    });
   if (params.worldviewValue === 'CUSTOM' && !params.customWorldviewText) {
     context.addIssue({
       code: 'custom',
@@ -115,12 +166,54 @@ const requireCustomWorldview = (
 };
 
 export const createGalleryParamsSchema = z
-  .object(createGalleryParamFields)
+  .object({ ...createGalleryParamFields, continuityNotes: optionalTrimmed(2000).optional() })
+  .strict()
+  .superRefine(requireCustomWorldview);
+
+export const MAX_CONTINUATION_POSTS = 6;
+export const MAX_CONTINUATION_EXCERPT_CHARS = 300;
+
+export const galleryContinuationContextSchema = z
+  .object({
+    galleryTitle: nonEmptyTrimmed(200),
+    totalPostCount: z.number().int().min(0).max(200),
+    recentPosts: z
+      .array(
+        z
+          .object({
+            title: nonEmptyTrimmed(200),
+            author: nonEmptyTrimmed(64),
+            contentExcerpt: nonEmptyTrimmed(MAX_CONTINUATION_EXCERPT_CHARS),
+          })
+          .strict(),
+      )
+      .max(MAX_CONTINUATION_POSTS),
+  })
+  .strict()
+  .refine(
+    context =>
+      context.recentPosts.length === Math.min(context.totalPostCount, MAX_CONTINUATION_POSTS),
+    {
+      message: 'Continuation context must include the newest posts up to the sample limit.',
+      path: ['recentPosts'],
+    },
+  );
+
+export const createGalleryRequestSchema = z
+  .object({
+    ...createGalleryParamFields,
+    continuityNotes: optionalTrimmed(2000).optional(),
+    continuationContext: galleryContinuationContextSchema.optional(),
+  })
   .strict()
   .superRefine(requireCustomWorldview);
 
 export const galleryContextSchema = z
-  .object({ worldlineId: worldlineIdSchema, ...createGalleryParamFields })
+  .object({
+    worldlineId: worldlineIdSchema,
+    ...createGalleryParamFields,
+    continuityNotes: optionalTrimmed(2000).optional(),
+  })
   .strict()
   .superRefine(requireCustomWorldview);
 
@@ -144,6 +237,7 @@ export const commentSchema = z
     nonRecommendations: safeCount,
     voted: z.enum(['rec', 'nonrec']).nullable().optional(),
     replyTo: replyTargetSchema.optional(),
+    reactionFailure: reactionFailureSchema.optional(),
   })
   .strict();
 
@@ -261,6 +355,7 @@ export const followUpCommentsRequestSchema = z
   .object({
     targetPost: followUpPostContextSchema,
     recentComments: z.array(commentSchema).min(1).max(6),
+    replyTargetComment: commentSchema.optional(),
     totalCommentCount: z.number().int().min(1).max(30),
     galleryContext: createGalleryParamsSchema,
   })
@@ -268,7 +363,16 @@ export const followUpCommentsRequestSchema = z
   .refine(request => request.totalCommentCount >= request.recentComments.length, {
     message: 'Total comment count cannot be smaller than the supplied recent comments.',
     path: ['totalCommentCount'],
-  });
+  })
+  .refine(
+    request =>
+      !request.replyTargetComment ||
+      request.recentComments.at(-1)?.replyTo?.commentId === request.replyTargetComment.id,
+    {
+      message: 'Reply target must match the final comment reply metadata.',
+      path: ['replyTargetComment'],
+    },
+  );
 
 export const worldviewFeedbackCommentSampleSchema = z
   .object({
