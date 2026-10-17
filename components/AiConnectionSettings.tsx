@@ -45,6 +45,7 @@ export const AiConnectionSettings: React.FC<AiConnectionSettingsProps> = ({
   const [isLoadingStatus, setIsLoadingStatus] = useState(isInitialStatusLoading);
   const [activeAction, setActiveAction] = useState<ActionName | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [geminiApiKey, setGeminiApiKey] = useState('');
   const [vertexAuthMode, setVertexAuthMode] = useState<VertexAuthMode>('service_account');
   const [vertexCredentials, setVertexCredentials] = useState('');
@@ -96,6 +97,7 @@ export const AiConnectionSettings: React.FC<AiConnectionSettingsProps> = ({
     setVertexCredentials('');
     setVertexProjectId('');
     setNotice(null);
+    setIsConfirmingDelete(false);
   }, [selectedProvider]);
 
   const runAction = async (
@@ -184,10 +186,10 @@ export const AiConnectionSettings: React.FC<AiConnectionSettingsProps> = ({
     setNotice(null);
   };
 
-  const handleDelete = () => {
-    const providerLabel = selectedProvider === 'gemini' ? 'Gemini' : 'Vertex AI';
-    if (!window.confirm(`${providerLabel} 자격증명을 서버에서 삭제할까요?`)) return;
+  const providerLabel = selectedProvider === 'gemini' ? 'Gemini' : 'Vertex AI';
 
+  const handleDelete = () => {
+    setIsConfirmingDelete(false);
     void runAction(
       'delete',
       () => deleteAiCredential(selectedProvider),
@@ -431,7 +433,7 @@ export const AiConnectionSettings: React.FC<AiConnectionSettingsProps> = ({
         <button
           type="button"
           disabled={isBusy || !selectedStatus?.configured}
-          onClick={handleDelete}
+          onClick={() => setIsConfirmingDelete(true)}
           className="px-4 py-2.5 rounded-lg border border-red-200 bg-white hover:bg-red-50 text-red-600 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {activeAction === 'delete' ? '삭제 중…' : '자격증명 삭제'}
@@ -453,6 +455,29 @@ export const AiConnectionSettings: React.FC<AiConnectionSettingsProps> = ({
           상태 새로고침
         </button>
       </div>
+
+      {isConfirmingDelete && (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900"
+        >
+          <span>{providerLabel} 자격증명을 서버에서 삭제할까요?</span>
+          <button
+            type="button"
+            onClick={handleDelete}
+            className="rounded-lg border border-red-300 bg-white px-3 py-1.5 font-bold text-red-700 hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+          >
+            삭제 확인
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsConfirmingDelete(false)}
+            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          >
+            취소
+          </button>
+        </div>
+      )}
 
       {notice && (
         <p

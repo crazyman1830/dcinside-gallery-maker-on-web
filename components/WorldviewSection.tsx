@@ -1,6 +1,7 @@
 import React from 'react';
 import { InfoTooltip } from './InfoTooltip';
 import { GalleryFormValidationErrors } from '../hooks/useGalleryForm';
+import { Icon } from './Icon';
 
 interface WorldviewSectionProps {
   selectedWorldview: string;
@@ -54,7 +55,7 @@ export const WorldviewSection: React.FC<WorldviewSectionProps> = ({
             ))}
           </select>
           <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-slate-500">
-            <i className="fas fa-chevron-down text-xs"></i>
+            <Icon icon="fas fa-chevron-down" className="text-xs" />
           </div>
         </div>
       </div>
@@ -86,7 +87,7 @@ export const WorldviewSection: React.FC<WorldviewSectionProps> = ({
               role="alert"
               className="text-xs text-red-500 mt-1.5 font-medium"
             >
-              <i className="fas fa-exclamation-circle mr-1" aria-hidden="true"></i>
+              <Icon icon="fas fa-exclamation-circle" className="mr-1" />
               {errors.customWorldviewText}
             </p>
           )}
@@ -111,12 +112,12 @@ export const WorldviewSection: React.FC<WorldviewSectionProps> = ({
             ))}
           </select>
           <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-slate-500">
-            <i className="fas fa-chevron-down text-xs"></i>
+            <Icon icon="fas fa-chevron-down" className="text-xs" />
           </div>
         </div>
 
         <p className="ml-1 mt-2 text-xs text-slate-600">
-          <i className="fas fa-info-circle mr-1"></i>
+          <Icon icon="fas fa-info-circle" className="mr-1" />
           선택한 세계관과 시간대를 조합하여 독창적인 설정을 만들 수 있습니다. (예: 현대 무협, 중세
           사이버펑크 등)
         </p>

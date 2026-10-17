@@ -3,6 +3,7 @@ import { LoadingSpinner } from './LoadingSpinner';
 import { MAX_COMMENT_AUTHOR_LENGTH } from '../constants';
 import { UserProfile } from '../types';
 import { resolveUserNickname } from '../utils/common';
+import { Icon } from './Icon';
 
 interface WritePostModalProps {
   isOpen: boolean;
@@ -15,6 +16,12 @@ interface WritePostModalProps {
 
 const MAX_TITLE_LENGTH = 50;
 const MAX_CONTENT_LENGTH = 500;
+
+const MEDIA_SNIPPETS = [
+  { type: '사진', label: '사진 설명 넣기', icon: 'fas fa-image' },
+  { type: '동영상', label: '동영상 설명 넣기', icon: 'fas fa-film' },
+  { type: '콘', label: '디시콘 넣기', icon: 'far fa-smile' },
+] as const;
 
 const validateRequired = (value: string, label: string, maxLength: number): string => {
   if (!value.trim()) return `${label}을 입력해주세요.`;
@@ -37,6 +44,8 @@ export const WritePostModal: React.FC<WritePostModalProps> = ({
   const [authorError, setAuthorError] = useState('');
   const [contentError, setContentError] = useState('');
   const [saveFailed, setSaveFailed] = useState(false);
+  const [confirmingDiscard, setConfirmingDiscard] = useState(false);
+  const keepWritingRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const authorInputRef = useRef<HTMLInputElement>(null);
@@ -60,6 +69,7 @@ export const WritePostModal: React.FC<WritePostModalProps> = ({
       setAuthorError('');
       setContentError('');
       setSaveFailed(false);
+      setConfirmingDiscard(false);
       dialog.showModal();
       wasOpenRef.current = true;
       requestAnimationFrame(() => titleInputRef.current?.focus());
@@ -79,6 +89,38 @@ export const WritePostModal: React.FC<WritePostModalProps> = ({
     },
     [],
   );
+
+  const isDirty = title.trim() !== '' || content.trim() !== '';
+
+  const requestClose = () => {
+    if (isSaving) return;
+    if (isDirty && !confirmingDiscard) {
+      setConfirmingDiscard(true);
+      requestAnimationFrame(() => keepWritingRef.current?.focus());
+      return;
+    }
+    onClose();
+  };
+
+  const insertMediaSnippet = (type: (typeof MEDIA_SNIPPETS)[number]['type']) => {
+    const textarea = contentInputRef.current;
+    const start = textarea?.selectionStart ?? content.length;
+    const end = textarea?.selectionEnd ?? content.length;
+    const before = content.slice(0, start);
+    // Pictures and videos render as blocks, so start them on their own line.
+    const lineBreak = type !== '콘' && before && !before.endsWith('\n') ? '\n' : '';
+    const snippet = `${lineBreak}(${type}: )`;
+    const next = `${before}${snippet}${content.slice(end)}`;
+    if (next.length > MAX_CONTENT_LENGTH) return;
+    setContent(next);
+    setConfirmingDiscard(false);
+    if (contentError) setContentError(validateRequired(next, '내용', MAX_CONTENT_LENGTH));
+    const caret = start + snippet.length - 1;
+    requestAnimationFrame(() => {
+      textarea?.focus();
+      textarea?.setSelectionRange(caret, caret);
+    });
+  };
 
   const validate = (): boolean => {
     const nextTitleError = validateRequired(title, '제목', MAX_TITLE_LENGTH);
@@ -114,7 +156,7 @@ export const WritePostModal: React.FC<WritePostModalProps> = ({
       aria-labelledby="write-post-modal-title"
       onCancel={event => {
         event.preventDefault();
-        if (!isSaving) onClose();
+        requestClose();
       }}
     >
       <form onSubmit={handleSave} className="flex max-h-[90vh] flex-col">
@@ -123,16 +165,16 @@ export const WritePostModal: React.FC<WritePostModalProps> = ({
             id="write-post-modal-title"
             className="flex items-center gap-2 text-xl font-bold text-slate-800"
           >
-            <i className="fas fa-pen-nib text-blue-600" aria-hidden="true" /> 새 글 작성
+            <Icon icon="fas fa-pen-nib" className="text-blue-600" /> 새 글 작성
           </h2>
           <button
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
             disabled={isSaving}
             className="flex h-10 w-10 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
             aria-label="닫기"
           >
-            <i className="fas fa-times text-lg" aria-hidden="true" />
+            <Icon icon="fas fa-times" className="text-lg" />
           </button>
         </div>
 
@@ -142,9 +184,35 @@ export const WritePostModal: React.FC<WritePostModalProps> = ({
             role="alert"
             className="mx-5 mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 sm:mx-6"
           >
-            <i className="fas fa-exclamation-circle mr-2" aria-hidden="true" />
+            <Icon icon="fas fa-exclamation-circle" className="mr-2" />
             {submissionError || '글을 등록하지 못했습니다. 잠시 후 다시 시도해주세요.'}
           </p>
+        )}
+
+        {confirmingDiscard && (
+          <div
+            role="alert"
+            className="mx-5 mt-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 sm:mx-6"
+          >
+            <p className="font-medium">작성 중인 내용이 사라집니다. 창을 닫을까요?</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button
+                ref={keepWritingRef}
+                type="button"
+                onClick={() => setConfirmingDiscard(false)}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              >
+                계속 작성
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2"
+              >
+                작성 취소하고 닫기
+              </button>
+            </div>
+          </div>
         )}
 
         <div className="space-y-5 overflow-y-auto p-5 sm:p-6">
@@ -161,6 +229,7 @@ export const WritePostModal: React.FC<WritePostModalProps> = ({
                 const nextValue = event.target.value;
                 setTitle(nextValue);
                 setSaveFailed(false);
+                setConfirmingDiscard(false);
                 if (titleError)
                   setTitleError(validateRequired(nextValue, '제목', MAX_TITLE_LENGTH));
               }}
@@ -228,9 +297,26 @@ export const WritePostModal: React.FC<WritePostModalProps> = ({
           </div>
 
           <div>
-            <label htmlFor="postContent" className="mb-2 block text-sm font-bold text-slate-700">
-              내용
-            </label>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <label htmlFor="postContent" className="block text-sm font-bold text-slate-700">
+                내용
+              </label>
+              <div className="flex flex-wrap gap-1" role="group" aria-label="미디어 묘사 넣기">
+                {MEDIA_SNIPPETS.map(snippet => (
+                  <button
+                    key={snippet.type}
+                    type="button"
+                    onClick={() => insertMediaSnippet(snippet.type)}
+                    disabled={content.length + snippet.type.length + 5 > MAX_CONTENT_LENGTH}
+                    className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40"
+                    title={`본문에 (${snippet.type}: 설명) 형식을 넣습니다.`}
+                  >
+                    <Icon icon={snippet.icon} />
+                    {snippet.label}
+                  </button>
+                ))}
+              </div>
+            </div>
             <textarea
               ref={contentInputRef}
               id="postContent"
@@ -239,8 +325,15 @@ export const WritePostModal: React.FC<WritePostModalProps> = ({
                 const nextValue = event.target.value;
                 setContent(nextValue);
                 setSaveFailed(false);
+                setConfirmingDiscard(false);
                 if (contentError)
                   setContentError(validateRequired(nextValue, '내용', MAX_CONTENT_LENGTH));
+              }}
+              onKeyDown={event => {
+                if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+                  event.preventDefault();
+                  event.currentTarget.form?.requestSubmit();
+                }
               }}
               rows={8}
               className={`min-h-[150px] w-full resize-y rounded-xl border bg-slate-50 px-4 py-3 text-slate-700 outline-none transition-colors focus:bg-white focus:ring-2 focus:ring-blue-500/20 ${contentError ? 'border-red-500 bg-red-50' : 'border-slate-200 focus:border-blue-500'}`}
@@ -274,7 +367,7 @@ export const WritePostModal: React.FC<WritePostModalProps> = ({
         <div className="flex justify-end gap-3 border-t border-slate-100 bg-slate-50/50 px-5 py-4 sm:px-6 sm:py-5">
           <button
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
             disabled={isSaving}
             className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-600 shadow-sm transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
           >
@@ -292,7 +385,7 @@ export const WritePostModal: React.FC<WritePostModalProps> = ({
               </>
             ) : (
               <>
-                <i className="fas fa-check mr-2" aria-hidden="true" /> 등록하기
+                <Icon icon="fas fa-check" className="mr-2" /> 등록하기
               </>
             )}
           </button>

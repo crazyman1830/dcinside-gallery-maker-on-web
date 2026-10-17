@@ -2,6 +2,7 @@ import React from 'react';
 import { UserNicknameType } from '../types';
 import { GalleryFormValidationErrors } from '../hooks/useGalleryForm';
 import { InfoTooltip } from './InfoTooltip';
+import { Icon } from './Icon';
 
 interface UserProfileSectionProps {
   nicknameType: UserNicknameType;
@@ -57,10 +58,11 @@ export const UserProfileSection: React.FC<UserProfileSectionProps> = ({
               <span
                 className={`font-bold ${nicknameType === 'ANONYMOUS' ? 'text-blue-700' : 'text-slate-600'}`}
               >
-                <i className="fas fa-ghost mr-2"></i>유동닉 (익명)
+                <Icon icon="fas fa-ghost" className="mr-2" />
+                유동닉 (익명)
               </span>
               {nicknameType === 'ANONYMOUS' && (
-                <i className="fas fa-check-circle text-blue-500"></i>
+                <Icon icon="fas fa-check-circle" className="text-blue-500" />
               )}
             </div>
             <div className="text-xs text-slate-500 mt-1">자동으로 생성된 IP로 활동합니다.</div>
@@ -80,9 +82,12 @@ export const UserProfileSection: React.FC<UserProfileSectionProps> = ({
               <span
                 className={`font-bold ${nicknameType === 'FIXED' ? 'text-indigo-700' : 'text-slate-600'}`}
               >
-                <i className="fas fa-user-tag mr-2"></i>고정닉 (닉네임)
+                <Icon icon="fas fa-user-tag" className="mr-2" />
+                고정닉 (닉네임)
               </span>
-              {nicknameType === 'FIXED' && <i className="fas fa-check-circle text-indigo-500"></i>}
+              {nicknameType === 'FIXED' && (
+                <Icon icon="fas fa-check-circle" className="text-indigo-500" />
+              )}
             </div>
             <div className="text-xs text-slate-500 mt-1">원하는 닉네임을 설정합니다.</div>
           </button>
@@ -93,7 +98,7 @@ export const UserProfileSection: React.FC<UserProfileSectionProps> = ({
         {nicknameType === 'ANONYMOUS' ? (
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-full bg-slate-200 flex items-center justify-center text-slate-400">
-              <i className="fas fa-user-secret text-xl"></i>
+              <Icon icon="fas fa-user-secret" className="text-xl" />
             </div>
             <div>
               <p className="text-xs text-slate-500 uppercase font-bold tracking-wide mb-1">
@@ -108,7 +113,7 @@ export const UserProfileSection: React.FC<UserProfileSectionProps> = ({
           <div className="space-y-3">
             <div className="flex items-center gap-4 mb-4">
               <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-500">
-                <i className="fas fa-user text-xl"></i>
+                <Icon icon="fas fa-user" className="text-xl" />
               </div>
               <div className="flex-1">
                 <label
@@ -141,7 +146,7 @@ export const UserProfileSection: React.FC<UserProfileSectionProps> = ({
                 role="alert"
                 className="text-xs text-red-600 font-medium pl-16"
               >
-                <i className="fas fa-exclamation-circle mr-1" aria-hidden="true"></i>
+                <Icon icon="fas fa-exclamation-circle" className="mr-1" />
                 {errors.fixedNickname}
               </p>
             )}
@@ -183,7 +188,7 @@ export const UserProfileSection: React.FC<UserProfileSectionProps> = ({
 
       {nicknameType === 'FIXED' && (
         <p className="text-xs text-indigo-500 text-center bg-indigo-50 py-2 rounded-lg border border-indigo-100">
-          <i className="fas fa-info-circle mr-1"></i>
+          <Icon icon="fas fa-info-circle" className="mr-1" />
           고정닉 사용 시 AI가 유저를 '네임드 유저'로 인식할 확률이 높아집니다.
         </p>
       )}

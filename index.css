@@ -2,8 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif;
+/* Sizing for <Icon>: one text line tall, centred in a fixed-width box like FontAwesome. */
+.svg-inline--fa {
+  box-sizing: content-box;
+  display: inline-block;
+  height: 1em;
+  overflow: visible;
+  vertical-align: -0.125em;
+  width: 1.25em;
 }
 
 dialog:not([open]) {

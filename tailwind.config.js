@@ -1,3 +1,5 @@
+import defaultTheme from 'tailwindcss/defaultTheme';
+
 /** @type {import('tailwindcss').Config} */
 export default {
   content: [
@@ -9,6 +11,16 @@ export default {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        // Prefer native Hangul faces; Tailwind's default stack falls back to them
+        // only after Latin system fonts, which mixes metrics within a sentence.
+        sans: [
+          'Pretendard',
+          'Apple SD Gothic Neo',
+          'Malgun Gothic',
+          ...defaultTheme.fontFamily.sans,
+        ],
+      },
       keyframes: {
         fadeIn: {
           '0%': { opacity: '0' },

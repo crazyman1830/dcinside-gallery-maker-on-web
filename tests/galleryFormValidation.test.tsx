@@ -64,6 +64,8 @@ describe('gallery form validation', () => {
         expect.objectContaining({ selectedProvider: provider, selectedModel: 'gemini-4-argon' }),
       );
     },
+    // Typing through the full form exceeds the 5 s default under coverage instrumentation.
+    15_000,
   );
 
   it('does not poll credential status after opening advanced settings', async () => {

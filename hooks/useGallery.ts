@@ -652,19 +652,27 @@ export const useGallery = () => {
     [storage, ui, makeRequest],
   );
 
-  const retryFailedStages = useCallback(async () => {
-    const failures = (storage.galleryData?.warnings ?? []).filter(
-      warning => warning.postId && (warning.stage === 'evaluation' || warning.stage === 'comments'),
-    );
-    const visited = new Set<string>();
-    for (const failure of failures) {
-      const key = `${failure.postId}:${failure.stage}`;
-      if (visited.has(key)) continue;
-      visited.add(key);
-      if (!(await retryFailedStage(failure.postId!, failure.stage as 'evaluation' | 'comments')))
-        break;
-    }
-  }, [storage.galleryData, retryFailedStage]);
+  const retryFailedStages = useCallback(
+    async (postId?: string) => {
+      const failures = (storage.galleryData?.warnings ?? []).filter(
+        warning =>
+          warning.postId &&
+          (!postId || warning.postId === postId) &&
+          (warning.stage === 'evaluation' || warning.stage === 'comments'),
+      );
+      const visited = new Set<string>();
+      for (const failure of failures) {
+        const key = `${failure.postId}:${failure.stage}`;
+        if (visited.has(key)) continue;
+        visited.add(key);
+        if (!(await retryFailedStage(failure.postId!, failure.stage as 'evaluation' | 'comments')))
+          break;
+      }
+    },
+    [storage.galleryData, retryFailedStage],
+  );
+
+  const dismissGenerationFailure = useCallback(() => setGenerationFailure(null), []);
 
   const fetchWorldviewFeedback = useCallback(async () => {
     if (
@@ -876,10 +884,13 @@ export const useGallery = () => {
     failedReactions,
     failedReactionList,
     generationFailure,
+    dismissGenerationFailure,
     retryReaction,
     votePost,
     voteComment,
     fetchWorldviewFeedback,
     setError: ui.setError,
+    setSuccessMessage: ui.setSuccessMessage,
+    setWarningMessage: ui.setWarningMessage,
   };
 };

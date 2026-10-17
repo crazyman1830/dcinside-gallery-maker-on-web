@@ -1,4 +1,5 @@
 import React from 'react';
+import { Icon } from './Icon';
 
 interface WarningMessageProps {
   message: string;
@@ -11,7 +12,7 @@ export const WarningMessage: React.FC<WarningMessageProps> = ({ message }) => (
     aria-live="polite"
   >
     <strong className="font-bold">
-      <i className="fas fa-exclamation-circle mr-2" aria-hidden="true" />
+      <Icon icon="fas fa-exclamation-circle" className="mr-2" />
       안내:
     </strong>
     <span className="block sm:inline sm:ml-2">{message}</span>

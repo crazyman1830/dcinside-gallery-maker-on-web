@@ -4,6 +4,7 @@ import { AiProvider } from '../types';
 import { useGalleryFormContext } from '../context/GalleryFormContext';
 import { AiConnectionSettings } from './AiConnectionSettings';
 import type { AiCredentialStatus } from '../services/aiCredentialClient';
+import { Icon } from './Icon';
 
 interface AdvancedOptionsSectionProps {
   selectedModel: string;
@@ -50,7 +51,7 @@ export const AdvancedOptionsSection: React.FC<AdvancedOptionsSectionProps> = ({
             <option value="vertex">Google Cloud Vertex AI</option>
           </select>
           <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-slate-500">
-            <i className="fas fa-chevron-down text-xs"></i>
+            <Icon icon="fas fa-chevron-down" className="text-xs" />
           </div>
         </div>
         <p className="ml-1 mt-2 text-xs text-slate-600">
@@ -76,7 +77,7 @@ export const AdvancedOptionsSection: React.FC<AdvancedOptionsSectionProps> = ({
             ))}
           </select>
           <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-slate-500">
-            <i className="fas fa-chevron-down text-xs"></i>
+            <Icon icon="fas fa-chevron-down" className="text-xs" />
           </div>
         </div>
         <p className="ml-1 mt-2 text-xs text-slate-600">

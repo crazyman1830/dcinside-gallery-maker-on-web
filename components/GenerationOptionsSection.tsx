@@ -1,6 +1,7 @@
 import React from 'react';
 import { InfoTooltip } from './InfoTooltip';
 import { GalleryFormValidationErrors } from '../hooks/useGalleryForm';
+import { Icon } from './Icon';
 
 interface GenerationOptionsSectionProps {
   selectedToxicityLevel: string;
@@ -18,6 +19,8 @@ interface GenerationOptionsSectionProps {
   onDiscussionContextChange: (value: string) => void;
 
   errors: GalleryFormValidationErrors;
+
+  fixedNicknameSlot?: React.ReactNode;
 }
 
 export const GenerationOptionsSection: React.FC<GenerationOptionsSectionProps> = ({
@@ -32,6 +35,7 @@ export const GenerationOptionsSection: React.FC<GenerationOptionsSectionProps> =
   discussionContext,
   onDiscussionContextChange,
   errors,
+  fixedNicknameSlot,
 }) => {
   const inputClass =
     'w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200 text-slate-700 placeholder-slate-500 outline-none';
@@ -39,53 +43,6 @@ export const GenerationOptionsSection: React.FC<GenerationOptionsSectionProps> =
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div>
-          <label htmlFor="toxicityLevel" className={labelClass}>
-            갤러리 맵기 (수위)
-          </label>
-          <div className="relative">
-            <select
-              id="toxicityLevel"
-              value={selectedToxicityLevel}
-              onChange={e => onToxicityLevelChange(e.target.value)}
-              className={`${inputClass} appearance-none cursor-pointer`}
-            >
-              {toxicityLevelOptions.map(tl => (
-                <option key={tl.value} value={tl.value}>
-                  {tl.label}
-                </option>
-              ))}
-            </select>
-            <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-slate-500">
-              <i className="fas fa-chevron-down text-xs" aria-hidden="true"></i>
-            </div>
-          </div>
-        </div>
-        <div>
-          <label htmlFor="anonymousNickRatio" className={labelClass}>
-            닉네임 비율
-          </label>
-          <div className="relative">
-            <select
-              id="anonymousNickRatio"
-              value={selectedAnonymousNickRatio}
-              onChange={e => onAnonymousNickRatioChange(e.target.value)}
-              className={`${inputClass} appearance-none cursor-pointer`}
-            >
-              {anonymousNickRatioOptions.map(nr => (
-                <option key={nr.value} value={nr.value}>
-                  {nr.label}
-                </option>
-              ))}
-            </select>
-            <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-slate-500">
-              <i className="fas fa-chevron-down text-xs" aria-hidden="true"></i>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <div className="p-5 bg-blue-50/50 rounded-2xl border border-blue-100">
         <div>
           <label htmlFor="topic" className={`${labelClass} text-blue-800`}>
@@ -108,7 +65,7 @@ export const GenerationOptionsSection: React.FC<GenerationOptionsSectionProps> =
           />
           {errors.topic && (
             <p id="topic-error" role="alert" className="text-xs text-red-600 mt-1.5 font-medium">
-              <i className="fas fa-exclamation-circle mr-1" aria-hidden="true"></i>
+              <Icon icon="fas fa-exclamation-circle" className="mr-1" />
               {errors.topic}
             </p>
           )}
@@ -141,12 +98,69 @@ export const GenerationOptionsSection: React.FC<GenerationOptionsSectionProps> =
               role="alert"
               className="text-xs text-red-600 mt-1.5 font-medium"
             >
-              <i className="fas fa-exclamation-circle mr-1" aria-hidden="true"></i>
+              <Icon icon="fas fa-exclamation-circle" className="mr-1" />
               {errors.discussionContext}
             </p>
           )}
         </div>
       </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <label htmlFor="toxicityLevel" className={labelClass}>
+            갤러리 맵기 (수위)
+          </label>
+          <div className="relative">
+            <select
+              id="toxicityLevel"
+              value={selectedToxicityLevel}
+              onChange={e => onToxicityLevelChange(e.target.value)}
+              className={`${inputClass} appearance-none cursor-pointer`}
+            >
+              {toxicityLevelOptions.map(tl => (
+                <option key={tl.value} value={tl.value}>
+                  {tl.label}
+                </option>
+              ))}
+            </select>
+            <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-slate-500">
+              <Icon icon="fas fa-chevron-down" className="text-xs" />
+            </div>
+          </div>
+        </div>
+        <div>
+          <label htmlFor="anonymousNickRatio" className={labelClass}>
+            닉네임 비율
+          </label>
+          <div className="relative">
+            <select
+              id="anonymousNickRatio"
+              value={selectedAnonymousNickRatio}
+              onChange={e => onAnonymousNickRatioChange(e.target.value)}
+              className={`${inputClass} appearance-none cursor-pointer`}
+            >
+              {anonymousNickRatioOptions.map(nr => (
+                <option key={nr.value} value={nr.value}>
+                  {nr.label}
+                </option>
+              ))}
+            </select>
+            <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-slate-500">
+              <Icon icon="fas fa-chevron-down" className="text-xs" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {fixedNicknameSlot && (
+        <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+          <p className="mb-1 text-sm font-bold text-slate-700">AI 고정닉</p>
+          <p className="mb-3 text-xs text-slate-600">
+            글과 댓글에 반복해서 등장할 고정닉의 이름, 성향, 말투를 정합니다. 설정하지 않아도 생성할
+            수 있습니다.
+          </p>
+          {fixedNicknameSlot}
+        </div>
+      )}
     </div>
   );
 };

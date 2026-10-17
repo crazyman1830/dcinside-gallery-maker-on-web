@@ -1,8 +1,9 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef } from 'react';
 import { timestampToEpoch } from '../utils/common';
 import { Post } from '../types';
 import { PostListItem } from './PostListItem';
 import { useGalleryListState, type GalleryListSort } from '../hooks/useGalleryListState';
+import { Icon } from './Icon';
 
 interface PostListProps {
   galleryId?: string;
@@ -30,14 +31,26 @@ export const PostList: React.FC<PostListProps> = ({
     if (sort === 'comments') result.sort((a, b) => b.comments.length - a.comments.length);
     return result;
   }, [posts, query, sort]);
+  // Post numbers follow the stored order (newest first), so sorting or searching
+  // never renumbers a post and only the newest post carries the NEW badge.
+  const postNumbers = useMemo(
+    () => new Map(posts.map((post, index) => [post.id, posts.length - index])),
+    [posts],
+  );
+  const listTopRef = useRef<HTMLDivElement>(null);
   const pages = Math.max(1, Math.ceil(filtered.length / 20));
+  const changePage = (nextPage: number) => {
+    updateState({ page: nextPage });
+    // Paging from the bottom controls should land on the first row, not mid-table.
+    listTopRef.current?.scrollIntoView?.({ block: 'start' });
+  };
   const currentPage = Math.min(page, pages);
   const visible = filtered.slice((currentPage - 1) * 20, currentPage * 20);
   if (!posts || posts.length === 0) {
     return (
       <div className="text-center py-16 px-4 bg-white shadow-sm rounded-2xl border border-slate-100">
         <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6">
-          <i className="fas fa-folder-open fa-2x text-slate-300"></i>
+          <Icon icon="fas fa-folder-open" className="text-3xl text-slate-300" />
         </div>
         <p className="text-xl font-bold text-slate-700">게시물이 없습니다</p>
         <p className="text-slate-500 mt-2 mb-6">
@@ -48,7 +61,7 @@ export const PostList: React.FC<PostListProps> = ({
             onClick={onWritePost}
             className="py-2.5 px-6 rounded-full font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/30 transition-all duration-200 hover:-translate-y-1"
           >
-            <i className="fas fa-pen mr-2"></i> 글쓰기
+            <Icon icon="fas fa-pen" className="mr-2" /> 글쓰기
           </button>
         )}
       </div>
@@ -56,9 +69,12 @@ export const PostList: React.FC<PostListProps> = ({
   }
 
   return (
-    <div className="overflow-hidden bg-white shadow-sm rounded-2xl border border-slate-200">
+    <div
+      ref={listTopRef}
+      className="scroll-mt-24 overflow-hidden bg-white shadow-sm rounded-2xl border border-slate-200"
+    >
       <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 p-4">
-        <label className="flex min-w-0 flex-1 flex-col gap-1 text-sm text-slate-700">
+        <label className="flex w-full min-w-0 flex-col gap-1 text-sm text-slate-700 sm:w-auto sm:flex-1">
           게시물 검색
           <input
             type="search"
@@ -119,11 +135,12 @@ export const PostList: React.FC<PostListProps> = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {visible.map((post, index) => (
+            {visible.map(post => (
               <PostListItem
                 key={post.id}
                 post={post}
-                index={(currentPage - 1) * 20 + index}
+                number={postNumbers.get(post.id) ?? 0}
+                isNewest={postNumbers.get(post.id) === posts.length}
                 onSelectPost={onSelectPost}
               />
             ))}
@@ -138,7 +155,7 @@ export const PostList: React.FC<PostListProps> = ({
           <button
             className="rounded border border-slate-300 px-3 py-2 disabled:opacity-50"
             disabled={currentPage === 1}
-            onClick={() => updateState({ page: currentPage - 1 })}
+            onClick={() => changePage(currentPage - 1)}
           >
             이전 페이지
           </button>
@@ -148,7 +165,7 @@ export const PostList: React.FC<PostListProps> = ({
           <button
             className="rounded border border-slate-300 px-3 py-2 disabled:opacity-50"
             disabled={currentPage === pages}
-            onClick={() => updateState({ page: currentPage + 1 })}
+            onClick={() => changePage(currentPage + 1)}
           >
             다음 페이지
           </button>
@@ -161,7 +178,7 @@ export const PostList: React.FC<PostListProps> = ({
             className="py-2 px-5 rounded-lg font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2 text-sm"
             aria-label="새 글 작성"
           >
-            <i className="fas fa-pen"></i> 글쓰기
+            <Icon icon="fas fa-pen" /> 글쓰기
           </button>
         )}
       </div>

@@ -1,9 +1,11 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Comment, ReplyTarget, UserProfile } from '../types';
 import { CommentItem } from './CommentItem';
 import { LoadingSpinner } from './LoadingSpinner';
 import { MAX_COMMENT_AUTHOR_LENGTH } from '../constants';
 import { resolveUserNickname } from '../utils/common';
+import { threadComments } from '../utils/commentThreads';
+import { Icon } from './Icon';
 
 interface CommentSectionProps {
   postId: string;
@@ -51,6 +53,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
   const [textError, setTextError] = useState('');
   const [authorError, setAuthorError] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const threadedComments = useMemo(() => threadComments(comments), [comments]);
 
   useEffect(() => {
     // Update author if profile changes (though usually static for session)
@@ -127,7 +130,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
           id="comment-section-title"
           className="text-lg font-bold text-slate-800 flex items-center gap-2"
         >
-          <i className="far fa-comments text-slate-400"></i>
+          <Icon icon="far fa-comments" className="text-slate-400" />
           댓글{' '}
           <span className="text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full text-sm shadow-sm border border-blue-100">
             {currentCommentCount}
@@ -142,12 +145,13 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
 
       {comments.length > 0 ? (
         <ul className="space-y-3 mb-8">
-          {comments.map(comment => (
+          {threadedComments.map(({ comment, depth }) => (
             <CommentItem
               key={comment.id}
               comment={comment}
               onSetReplyTo={handleSetReplyTo}
               isHighlighted={highlightedCommentIds.has(comment.id)}
+              isReply={depth === 1}
               onVoteComment={onVoteComment}
             />
           ))}
@@ -155,11 +159,25 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
       ) : (
         <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-xl mb-8 bg-slate-50/50">
           <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mx-auto mb-3 text-slate-300 shadow-sm">
-            <i className="far fa-comment-dots text-xl"></i>
+            <Icon icon="far fa-comment-dots" className="text-xl" />
           </div>
           <p className="text-slate-500 font-medium">아직 댓글이 없습니다.</p>
           <p className="mt-1 text-sm text-slate-600">첫 번째 댓글을 남겨보세요!</p>
         </div>
+      )}
+
+      {isAddingComment && (
+        <p
+          role="status"
+          className="mb-6 flex items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-white px-4 py-3 text-sm text-slate-600"
+        >
+          <span className="flex gap-1" aria-hidden="true">
+            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400 [animation-delay:-0.2s]" />
+            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400 [animation-delay:-0.1s]" />
+            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400" />
+          </span>
+          갤러리 유저들이 댓글을 작성하고 있습니다…
+        </p>
       )}
 
       {currentCommentCount < maxComments && (
@@ -171,7 +189,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
           {replyTarget && (
             <div className="bg-indigo-50 text-indigo-700 px-4 py-2 rounded-t-lg text-xs font-semibold flex items-center justify-between border-b border-indigo-100 animate-fade-in">
               <span className="flex items-center gap-2">
-                <i className="fas fa-reply transform scale-x-[-1]"></i>
+                <Icon icon="fas fa-reply" className="transform scale-x-[-1]" />
                 <span className="bg-white px-1.5 py-0.5 rounded border border-indigo-100 text-indigo-600">
                   @{replyTarget.author}
                 </span>{' '}
@@ -183,7 +201,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
                 className="w-5 h-5 flex items-center justify-center hover:bg-indigo-100 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
                 aria-label="답글 취소"
               >
-                <i className="fas fa-times"></i>
+                <Icon icon="fas fa-times" />
               </button>
             </div>
           )}
@@ -193,9 +211,9 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
               <div className="relative w-full sm:w-1/2 max-w-[180px]">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   {currentUserProfile?.nicknameType === 'ANONYMOUS' ? (
-                    <i className="fas fa-user-secret text-slate-400 text-xs"></i>
+                    <Icon icon="fas fa-user-secret" className="text-slate-400 text-xs" />
                   ) : (
-                    <i className="fas fa-user text-indigo-500 text-xs"></i>
+                    <Icon icon="fas fa-user" className="text-indigo-500 text-xs" />
                   )}
                 </div>
                 <input
@@ -226,7 +244,8 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
               </div>
               {isProfileSet && (
                 <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-1 text-[10px] text-slate-600">
-                  <i className="fas fa-lock mr-1"></i>프로필 고정됨
+                  <Icon icon="fas fa-lock" className="mr-1" />
+                  프로필 고정됨
                 </span>
               )}
             </div>
@@ -238,6 +257,12 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
                 const nextText = event.target.value;
                 setCommentText(nextText);
                 if (textError) setTextError(nextText.trim() ? '' : '내용을 입력해주세요.');
+              }}
+              onKeyDown={event => {
+                if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+                  event.preventDefault();
+                  event.currentTarget.form?.requestSubmit();
+                }
               }}
               rows={2}
               className="w-full resize-none border-none bg-transparent p-2 text-sm leading-relaxed text-slate-700 placeholder-slate-500 focus:ring-0 sm:text-base"
@@ -258,21 +283,22 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
             <div className="flex gap-2 text-xs">
               {textError && (
                 <span id="comment-text-error" role="alert" className="text-red-600 font-medium">
-                  <i className="fas fa-exclamation-circle mr-1" aria-hidden="true"></i>
+                  <Icon icon="fas fa-exclamation-circle" className="mr-1" />
                   {textError}
                 </span>
               )}
               {authorError && (
                 <span id="comment-author-error" role="alert" className="text-red-600 font-medium">
-                  <i className="fas fa-exclamation-circle mr-1" aria-hidden="true"></i>
+                  <Icon icon="fas fa-exclamation-circle" className="mr-1" />
                   {authorError}
                 </span>
               )}
               {!textError && !authorError && (
                 <span id="comment-length-help" className="flex items-center gap-1 text-slate-600">
-                  <i className="fas fa-pencil-alt text-[10px]"></i>
+                  <Icon icon="fas fa-pencil-alt" className="text-[10px]" />
                   {commentText.length}/{MAX_COMMENT_LENGTH}자 ·{' '}
                   {remainingComments > 0 ? `${remainingComments}개 작성 가능` : `작성 불가`}
+                  <span className="hidden sm:inline"> · Ctrl+Enter로 등록</span>
                 </span>
               )}
             </div>
@@ -282,10 +308,13 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
               className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold shadow-md shadow-blue-500/20 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 active:scale-95 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
             >
               {isAddingComment ? (
-                <LoadingSpinner small={true} />
+                <>
+                  <LoadingSpinner small={true} />
+                  <span className="sr-only">등록 중</span>
+                </>
               ) : (
                 <>
-                  <i className="fas fa-paper-plane text-xs"></i> 등록
+                  <Icon icon="fas fa-paper-plane" className="text-xs" /> 등록
                 </>
               )}
             </button>

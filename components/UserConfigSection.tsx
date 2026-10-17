@@ -1,5 +1,6 @@
 import React from 'react';
 import { GalleryFormValidationErrors } from '../hooks/useGalleryForm';
+import { Icon } from './Icon';
 
 interface UserConfigSectionProps {
   userSpecies: string;
@@ -139,8 +140,8 @@ export const UserConfigSection: React.FC<UserConfigSectionProps> = ({
           </div>
         ) : (
           <div className="px-4 py-3 bg-slate-50/50 border border-slate-100 rounded-xl text-sm text-slate-500 flex items-center">
-            <i className="fas fa-robot mr-2 text-slate-400"></i> AI가 주제에 맞춰 자동으로 성비를
-            결정합니다.
+            <Icon icon="fas fa-robot" className="mr-2 text-slate-400" /> AI가 주제에 맞춰 자동으로
+            성비를 결정합니다.
           </div>
         )}
       </div>
@@ -217,8 +218,8 @@ export const UserConfigSection: React.FC<UserConfigSectionProps> = ({
           </div>
         ) : (
           <div className="px-4 py-3 bg-slate-50/50 border border-slate-100 rounded-xl text-sm text-slate-500 flex items-center">
-            <i className="fas fa-robot mr-2 text-slate-400"></i> AI가 분위기에 맞춰 연령대를 자동
-            설정합니다.
+            <Icon icon="fas fa-robot" className="mr-2 text-slate-400" /> AI가 분위기에 맞춰 연령대를
+            자동 설정합니다.
           </div>
         )}
       </div>

@@ -1,16 +1,17 @@
 import React from 'react';
 import { Post } from '../types';
 import { formatTimestamp } from '../utils/common';
+import { Icon } from './Icon';
 
 interface PostListItemProps {
   post: Post;
-  index: number;
+  number: number;
+  isNewest: boolean;
   onSelectPost: (postId: string) => void;
 }
 
 export const PostListItem: React.FC<PostListItemProps> = React.memo(
-  ({ post, index, onSelectPost }) => {
-    const displayIndex = index + 1;
+  ({ post, number, isNewest, onSelectPost }) => {
     const isBest = post.isBestPost;
 
     return (
@@ -22,11 +23,15 @@ export const PostListItem: React.FC<PostListItemProps> = React.memo(
         {/* Number / Icon */}
         <td className="hidden w-12 px-4 py-4 text-center font-mono text-sm text-slate-600 sm:table-cell sm:w-16">
           {isBest ? (
-            <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-amber-100 text-amber-600 shadow-sm ring-1 ring-amber-200/50">
-              <i className="fas fa-crown text-[10px]"></i>
+            <span
+              className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-amber-100 text-amber-600 shadow-sm ring-1 ring-amber-200/50"
+              title={`개념글 · ${number}번`}
+            >
+              <Icon icon="fas fa-crown" className="text-[10px]" />
+              <span className="sr-only">개념글</span>
             </span>
           ) : (
-            displayIndex
+            number
           )}
         </td>
 
@@ -35,8 +40,12 @@ export const PostListItem: React.FC<PostListItemProps> = React.memo(
           <div className="flex flex-col">
             <div className="flex items-start gap-2">
               {isBest && (
-                <span className="sm:hidden inline-flex mt-1 flex-shrink-0 items-center justify-center w-5 h-5 rounded bg-amber-100 text-amber-600">
-                  <i className="fas fa-crown text-[10px]"></i>
+                <span
+                  className="mt-1 inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded bg-amber-100 text-amber-600 sm:hidden"
+                  title="개념글"
+                  aria-hidden="true"
+                >
+                  <Icon icon="fas fa-crown" className="text-[10px]" />
                 </span>
               )}
               <button
@@ -57,7 +66,7 @@ export const PostListItem: React.FC<PostListItemProps> = React.memo(
                 </span>
               )}
               {/* New Indicator */}
-              {index === 0 && !isBest && (
+              {isNewest && !isBest && (
                 <span className="mt-0.5 text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-1 rounded h-fit shrink-0 uppercase tracking-tighter">
                   NEW
                 </span>
@@ -77,7 +86,7 @@ export const PostListItem: React.FC<PostListItemProps> = React.memo(
               <span
                 className={`flex items-center gap-1 px-1.5 py-0.5 rounded ${isBest ? 'text-red-600 bg-red-50' : 'text-slate-500'}`}
               >
-                <i className="fas fa-thumbs-up text-[10px]"></i> {post.recommendations}
+                <Icon icon="fas fa-thumbs-up" className="text-[10px]" /> {post.recommendations}
               </span>
             </div>
           </div>

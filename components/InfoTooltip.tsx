@@ -1,4 +1,5 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
+import { Icon } from './Icon';
 
 interface InfoTooltipProps {
   text: React.ReactNode;
@@ -35,7 +36,7 @@ export const InfoTooltip: React.FC<InfoTooltipProps> = ({ text }) => {
         aria-describedby={isOpen ? tooltipId : undefined}
         onClick={() => setIsOpen(previous => !previous)}
       >
-        <i className="fas fa-question-circle text-sm" aria-hidden="true" />
+        <Icon icon="fas fa-question-circle" className="text-sm" />
       </button>
       {isOpen && (
         <span

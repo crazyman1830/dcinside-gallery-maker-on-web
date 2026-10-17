@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Preset } from '../types';
+import { Icon } from './Icon';
 
 interface PresetSectionProps {
   presets: Preset[];
@@ -18,6 +19,7 @@ export const PresetSection: React.FC<PresetSectionProps> = ({
 }) => {
   const [presetName, setPresetName] = useState('');
   const [selectedPresetId, setSelectedPresetId] = useState('');
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const isBuiltInPreset = selectedPresetId.startsWith('preset-example-');
 
   const handleLoad = () => {
@@ -34,17 +36,13 @@ export const PresetSection: React.FC<PresetSectionProps> = ({
     }
   };
 
+  const presetToDelete = presets.find(p => p.id === selectedPresetId);
+
   const handleDelete = () => {
-    if (selectedPresetId) {
-      const presetToDelete = presets.find(p => p.id === selectedPresetId);
-      if (
-        presetToDelete &&
-        window.confirm(`'${presetToDelete.name}' 프리셋을 정말 삭제하시겠습니까?`)
-      ) {
-        onDeletePreset(selectedPresetId);
-        setSelectedPresetId('');
-      }
-    }
+    if (!presetToDelete) return;
+    onDeletePreset(presetToDelete.id);
+    setSelectedPresetId('');
+    setIsConfirmingDelete(false);
   };
 
   const inputClass =
@@ -66,7 +64,10 @@ export const PresetSection: React.FC<PresetSectionProps> = ({
             <select
               id="preset-select"
               value={selectedPresetId}
-              onChange={e => setSelectedPresetId(e.target.value)}
+              onChange={e => {
+                setSelectedPresetId(e.target.value);
+                setIsConfirmingDelete(false);
+              }}
               className={`${inputClass} appearance-none cursor-pointer`}
             >
               <option value="">-- 프리셋 선택 --</option>
@@ -77,7 +78,7 @@ export const PresetSection: React.FC<PresetSectionProps> = ({
               ))}
             </select>
             <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-slate-500">
-              <i className="fas fa-chevron-down text-xs"></i>
+              <Icon icon="fas fa-chevron-down" className="text-xs" />
             </div>
           </div>
 
@@ -87,27 +88,50 @@ export const PresetSection: React.FC<PresetSectionProps> = ({
             disabled={!selectedPresetId}
             className={`${buttonClass} bg-emerald-500 hover:bg-emerald-600 text-white disabled:opacity-50 disabled:cursor-not-allowed`}
           >
-            <i className="fas fa-upload mr-2"></i> 불러오기
+            <Icon icon="fas fa-upload" className="mr-2" /> 불러오기
           </button>
           {!isBuiltInPreset && (
             <button
               type="button"
-              onClick={handleDelete}
+              onClick={() => setIsConfirmingDelete(true)}
               disabled={!selectedPresetId}
               className={`${buttonClass} bg-white border border-slate-200 text-slate-500 hover:text-red-500 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed`}
               aria-label="선택한 프리셋 삭제"
             >
-              <i className="fas fa-trash-alt" aria-hidden="true"></i>
+              <Icon icon="fas fa-trash-alt" />
             </button>
           )}
         </div>
+        {isConfirmingDelete && presetToDelete && (
+          <div
+            role="alert"
+            className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-900"
+          >
+            <span>&apos;{presetToDelete.name}&apos; 프리셋을 삭제할까요?</span>
+            <button
+              type="button"
+              onClick={handleDelete}
+              className="rounded-lg border border-red-300 bg-white px-3 py-1.5 font-semibold text-red-700 hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+            >
+              삭제 확인
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsConfirmingDelete(false)}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            >
+              취소
+            </button>
+          </div>
+        )}
         <p className="text-xs text-slate-500 mt-3 ml-1">
-          <i className="fas fa-shield-alt mr-1"></i>
+          <Icon icon="fas fa-shield-alt" className="mr-1" />
           AI 공급자, 모델, 웹 검색 및 연결 설정은 프리셋을 불러와도 변경되지 않습니다.
         </p>
         {presets.length === 0 && (
           <p className="ml-1 mt-3 text-xs text-slate-600">
-            <i className="fas fa-info-circle mr-1"></i>저장된 프리셋이 없습니다.
+            <Icon icon="fas fa-info-circle" className="mr-1" />
+            저장된 프리셋이 없습니다.
           </p>
         )}
       </div>
@@ -134,7 +158,7 @@ export const PresetSection: React.FC<PresetSectionProps> = ({
             disabled={!presetName.trim()}
             className={`${buttonClass} bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 disabled:cursor-not-allowed`}
           >
-            <i className="fas fa-save mr-2"></i> 저장
+            <Icon icon="fas fa-save" className="mr-2" /> 저장
           </button>
         </div>
       </div>

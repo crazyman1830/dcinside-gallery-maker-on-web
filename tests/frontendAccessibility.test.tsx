@@ -44,7 +44,7 @@ const AccordionFixture = () => {
   return (
     <FormSection
       title="테스트 설정"
-      iconClass="fas fa-cog"
+      iconClass="fas fa-cogs"
       id="test-section"
       isOpen={isOpen}
       onToggle={() => setIsOpen(previous => !previous)}

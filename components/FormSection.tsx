@@ -1,8 +1,9 @@
 import React from 'react';
+import { Icon, type IconName } from './Icon';
 
 interface FormSectionProps {
   title: string;
-  iconClass: string;
+  iconClass: IconName;
   iconColorClass?: string;
   isOpen: boolean;
   onToggle: () => void;
@@ -33,14 +34,14 @@ export const FormSection: React.FC<FormSectionProps> = ({
           <span
             className={`mr-3 flex h-8 w-8 items-center justify-center rounded-lg ${isOpen ? 'bg-white shadow-sm' : 'bg-slate-100'}`}
           >
-            <i className={`${iconClass} ${iconColorClass}`} aria-hidden="true" />
+            <Icon icon={iconClass} className={iconColorClass} />
           </span>
           {title}
         </span>
         <span
           className={`flex h-8 w-8 items-center justify-center rounded-full transition-all duration-300 ${isOpen ? 'rotate-180 bg-blue-100 text-blue-600' : 'text-slate-400'}`}
         >
-          <i className="fas fa-chevron-down text-sm" aria-hidden="true" />
+          <Icon icon="fas fa-chevron-down" className="text-sm" />
         </span>
       </button>
       {isOpen && (

@@ -3,11 +3,13 @@ import { Comment } from '../types';
 import { useVoting } from '../hooks/useVoting';
 import { POST_AUTHOR_PREFIX } from '../constants';
 import { formatTimestamp } from '../utils/common';
+import { Icon } from './Icon';
 
 interface CommentItemProps {
   comment: Comment;
   onSetReplyTo: (author: string, id: string) => void;
   isHighlighted: boolean;
+  isReply?: boolean;
   onVoteComment?: (
     commentId: string,
     voteType: 'rec' | 'nonrec' | null,
@@ -48,10 +50,10 @@ const CommentContentRenderer: React.FC<{ comment: Comment }> = ({ comment }) => 
     parts.push(
       <span
         key={`con-${match.index}`}
-        className="inline-block mx-1 px-2 py-0.5 bg-yellow-50 border border-yellow-200 rounded text-xs text-gray-500 italic align-middle select-none"
+        className="mx-1 inline-block select-none rounded border border-yellow-200 bg-yellow-50 px-2 py-0.5 align-middle text-xs italic text-slate-600"
         title="디시콘"
       >
-        <i className="far fa-smile mr-1"></i>
+        <Icon icon="far fa-smile" className="mr-1" />
         {description}
       </span>,
     );
@@ -77,6 +79,7 @@ export const CommentItem: React.FC<CommentItemProps> = ({
   comment,
   onSetReplyTo,
   isHighlighted,
+  isReply = false,
   onVoteComment,
 }) => {
   const { recs, nonRecs, voted, handleRecommend, handleNonRecommend } = useVoting(
@@ -90,8 +93,15 @@ export const CommentItem: React.FC<CommentItemProps> = ({
     },
   );
 
-  const itemClasses = `p-4 rounded-lg shadow border transition-all duration-300 ease-in-out
-    ${isHighlighted ? 'bg-yellow-50 border-yellow-300 ring-2 ring-yellow-200' : 'bg-white border-gray-200 hover:shadow-md'}`;
+  const itemClasses = `relative rounded-lg border transition-all duration-300 ease-in-out ${
+    isReply ? 'ml-6 p-3 sm:ml-10' : 'p-4 shadow-sm'
+  } ${
+    isHighlighted
+      ? 'border-yellow-300 bg-yellow-50 ring-2 ring-yellow-200'
+      : isReply
+        ? 'border-slate-200 bg-slate-50'
+        : 'border-slate-200 bg-white hover:shadow-md'
+  }`;
 
   const handleReplyClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
@@ -112,14 +122,22 @@ export const CommentItem: React.FC<CommentItemProps> = ({
     <li
       className={itemClasses}
       id={`comment-${comment.id}`}
-      aria-label={`${authorDisplay}의 댓글${isPostAuthorComment ? ' (글쓴이)' : ''}`}
+      aria-label={`${authorDisplay}의 댓글${isPostAuthorComment ? ' (글쓴이)' : ''}${isReply ? ', 답글' : ''}`}
     >
+      {isReply && (
+        <span
+          className="absolute -left-5 top-3 text-sm text-slate-400 sm:-left-7"
+          aria-hidden="true"
+        >
+          ㄴ
+        </span>
+      )}
       <div className="flex justify-between items-start mb-2">
         <div className="flex flex-wrap items-center gap-2">
           <span
             className={`font-bold text-sm ${isPostAuthorComment ? 'text-blue-600' : 'text-slate-700'}`}
           >
-            {isPostAuthorComment && <i className="fas fa-user-edit mr-1 text-xs"></i>}
+            {isPostAuthorComment && <Icon icon="fas fa-user-edit" className="mr-1 text-xs" />}
             {authorDisplay}
           </span>
           <span className="text-[10px] text-slate-300">|</span>
@@ -131,6 +149,7 @@ export const CommentItem: React.FC<CommentItemProps> = ({
         <div className="flex items-center gap-1">
           <div className="flex bg-slate-50 rounded-md border border-slate-100 overflow-hidden">
             <button
+              type="button"
               onClick={e => {
                 e.stopPropagation();
                 handleRecommend();
@@ -141,10 +160,11 @@ export const CommentItem: React.FC<CommentItemProps> = ({
               aria-label={`댓글 추천 ${recs}개`}
               aria-pressed={voted === 'rec'}
             >
-              <i className="fas fa-thumbs-up"></i> {recs > 0 && recs}
+              <Icon icon="fas fa-thumbs-up" /> {recs > 0 && recs}
             </button>
             <div className="w-[1px] bg-slate-200"></div>
             <button
+              type="button"
               onClick={e => {
                 e.stopPropagation();
                 handleNonRecommend();
@@ -155,17 +175,18 @@ export const CommentItem: React.FC<CommentItemProps> = ({
               aria-label={`댓글 비추천 ${nonRecs}개`}
               aria-pressed={voted === 'nonrec'}
             >
-              <i className="fas fa-thumbs-down"></i> {nonRecs > 0 && nonRecs}
+              <Icon icon="fas fa-thumbs-down" /> {nonRecs > 0 && nonRecs}
             </button>
           </div>
 
           <button
+            type="button"
             onClick={handleReplyClick}
             className="ml-1 flex h-7 w-7 items-center justify-center rounded-md text-slate-600 transition-colors hover:bg-indigo-50 hover:text-indigo-700"
             title="답글 달기"
             aria-label="이 댓글에 답글 달기"
           >
-            <i className="fas fa-reply text-xs transform scale-x-[-1]"></i>
+            <Icon icon="fas fa-reply" className="text-xs transform scale-x-[-1]" />
           </button>
         </div>
       </div>

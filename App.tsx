@@ -5,9 +5,10 @@ import { WorldlineMemory } from './components/WorldlineMemory';
 import { GalleryHeader } from './components/GalleryHeader';
 import { PostList } from './components/PostList';
 import { PostView } from './components/PostView';
-import { ErrorMessage } from './components/ErrorMessage';
-import { SuccessMessage } from './components/SuccessMessage';
 import { WarningMessage } from './components/WarningMessage';
+import { NoticeToasts, type Notice } from './components/NoticeToasts';
+import { GenerationFailureCard } from './components/GenerationFailureCard';
+import { StageWarnings } from './components/StageWarnings';
 import { WritePostModal } from './components/WritePostModal';
 import { GalleryCreationFormContent } from './components/GalleryCreationForm';
 import { GalleryFormProvider } from './context/GalleryFormContext';
@@ -18,8 +19,15 @@ import { StreamingStatus } from './components/StreamingStatus';
 import { useGallery } from './hooks/useGallery';
 import { MAX_TOTAL_COMMENTS_PER_POST } from './constants';
 import type { CreateGalleryInput, GallerySessionV2, UserProfile } from './types';
+import { Icon } from './components/Icon';
 
 type GallerySubmission = CreateGalleryInput & { userProfile: UserProfile };
+
+const secondaryButtonClass =
+  'inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50';
+
+const focusAfterPaint = (id: string) =>
+  requestAnimationFrame(() => document.getElementById(id)?.focus({ preventScroll: true }));
 
 const App: React.FC = () => {
   const {
@@ -30,6 +38,7 @@ const App: React.FC = () => {
     saveFixedNicknames,
     retryFailedStages,
     generationFailure,
+    dismissGenerationFailure,
     galleryContext,
     currentUserProfile,
     isLoading,
@@ -61,6 +70,8 @@ const App: React.FC = () => {
     voteComment,
     fetchWorldviewFeedback,
     setError,
+    setSuccessMessage,
+    setWarningMessage,
   } = useGallery();
 
   const navigation = useGalleryNavigation(galleryData, galleryContext?.worldlineId, isLoading);
@@ -74,6 +85,7 @@ const App: React.FC = () => {
     settings: galleryContextToFormSettings(galleryContext, currentUserProfile),
   }));
   const libraryRef = useRef<{ saveCurrent: () => Promise<boolean> }>(null);
+  const isBusy = isLoading || isSavingUserPost || isAddingComment;
 
   const handleCreateGallery = useCallback(
     async (params: GallerySubmission) => {
@@ -95,9 +107,7 @@ const App: React.FC = () => {
       const created = await pendingResult;
       if (created) {
         navigate('gallery-list');
-        requestAnimationFrame(() =>
-          document.getElementById('gallery-content-title')?.focus({ preventScroll: true }),
-        );
+        focusAfterPaint('gallery-content-title');
       }
     },
     [createGallery, navigate, setError],
@@ -107,9 +117,7 @@ const App: React.FC = () => {
     (postId: string) => {
       selectPost(postId);
       navigate('post', postId);
-      requestAnimationFrame(() =>
-        document.getElementById('post-title')?.focus({ preventScroll: true }),
-      );
+      focusAfterPaint('post-title');
     },
     [selectPost, navigate],
   );
@@ -117,28 +125,20 @@ const App: React.FC = () => {
   const handleBackToList = useCallback(() => {
     backToList();
     navigate('gallery-list');
-    requestAnimationFrame(() =>
-      document.getElementById('gallery-content-title')?.focus({ preventScroll: true }),
-    );
+    focusAfterPaint('gallery-content-title');
   }, [backToList, navigate]);
 
   const handleOpenSetup = useCallback(() => {
     backToList();
     navigate('setup');
-    requestAnimationFrame(() =>
-      document.getElementById('setup-title')?.focus({ preventScroll: true }),
-    );
+    focusAfterPaint('setup-title');
   }, [backToList, navigate]);
 
   const handleSavePost = useCallback(
     async (title: string, author: string, content: string) => {
       const saved = await saveUserPost(title, author, content, id => navigate('post', id));
       if (saved) {
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() =>
-            document.getElementById('post-title')?.focus({ preventScroll: true }),
-          );
-        });
+        requestAnimationFrame(() => focusAfterPaint('post-title'));
       }
       return saved;
     },
@@ -152,10 +152,15 @@ const App: React.FC = () => {
 
   const handleReturnToGallery = useCallback(() => {
     navigate('gallery-list');
-    requestAnimationFrame(() =>
-      document.getElementById('gallery-content-title')?.focus({ preventScroll: true }),
-    );
+    focusAfterPaint('gallery-content-title');
   }, [navigate]);
+
+  const retryGeneration = useCallback(() => {
+    if (!generationFailure) return;
+    void createGallery(generationFailure.params, generationFailure.append).then(created => {
+      if (created) navigate('gallery-list');
+    });
+  }, [createGallery, generationFailure, navigate]);
 
   const isGalleryView = view === 'gallery-list' || view === 'post';
   const currentSession = useMemo<GallerySessionV2 | null>(
@@ -177,17 +182,68 @@ const App: React.FC = () => {
     [galleryData, galleryContext, currentUserProfile, revision],
   );
 
+  const notices: Notice[] = [];
+  if (successMessage && !error) {
+    notices.push({
+      id: `success:${successMessage}`,
+      tone: 'success',
+      message: successMessage,
+      onDismiss: () => setSuccessMessage(null),
+    });
+  }
+  if (warningMessage && !error) {
+    notices.push({
+      id: `warning:${warningMessage}`,
+      tone: 'warning',
+      message: warningMessage,
+      onDismiss: () => setWarningMessage(null),
+    });
+  }
+  // The write dialog and the failure card already show these errors in place.
+  if (
+    error &&
+    !(isWriteModalOpen && galleryData) &&
+    !(generationFailure && !isLoading && error === generationFailure.message)
+  ) {
+    notices.push({
+      id: `error:${error}`,
+      tone: 'error',
+      message: error,
+      onDismiss: () => setError(null),
+    });
+  }
+
+  const generationFailureCard = generationFailure && !isLoading && (
+    <GenerationFailureCard
+      stage={generationFailure.stage}
+      message={generationFailure.message}
+      failedAt={generationFailure.failedAt}
+      isAppend={generationFailure.append}
+      disabled={isBusy}
+      onRetry={retryGeneration}
+      onDismiss={() => {
+        dismissGenerationFailure();
+        setError(null);
+      }}
+    />
+  );
+  const postWarnings =
+    selectedPost && galleryData?.warnings
+      ? galleryData.warnings.filter(warning => warning.postId === selectedPost.id)
+      : [];
+
   return (
     <GalleryFormProvider
       key={formSeed.key}
       initialState={formSeed.settings}
       sessionFixedNicknames={galleryContext?.fixedNicknames}
     >
+      <NoticeToasts notices={notices} />
       <div className="container mx-auto flex min-h-screen max-w-4xl flex-col p-4 font-sans">
         {view === 'setup' && (
-          <header className="space-y-5 py-10 text-center md:py-14">
+          <header className="space-y-5 py-8 text-center md:py-12">
             <div className="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-blue-700 shadow-sm animate-fade-in-up">
-              <i className="fas fa-robot" aria-hidden="true" /> AI Community Generator
+              <Icon icon="fas fa-robot" /> AI Community Generator
             </div>
             <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 drop-shadow-sm animate-fade-in-up sm:text-5xl md:text-6xl">
               <span className="inline-block">DCInside</span>{' '}
@@ -208,36 +264,11 @@ const App: React.FC = () => {
         )}
 
         <main className="flex-grow">
-          {successMessage && !error && <SuccessMessage message={successMessage} />}
-          {warningMessage && !error && <WarningMessage message={warningMessage} />}
           {storageWarning && <WarningMessage message={storageWarning} />}
-          {error && <ErrorMessage message={error} />}
-          {generationFailure && !isLoading && (
-            <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-4" role="status">
-              <p className="text-sm text-slate-800">
-                실패 단계: {generationFailure.stage} ·{' '}
-                {new Date(generationFailure.failedAt).toLocaleTimeString('ko-KR')}
-              </p>
-              <p className="mt-1 text-sm text-slate-700">{generationFailure.message}</p>
-              <button
-                type="button"
-                className="mt-3 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
-                onClick={() =>
-                  void createGallery(generationFailure.params, generationFailure.append).then(
-                    created => {
-                      if (created) navigate('gallery-list');
-                    },
-                  )
-                }
-              >
-                실패 지점에서 재시도
-              </button>
-            </div>
-          )}
           <GalleryLibrary
             ref={libraryRef}
             session={currentSession}
-            disabled={isLoading || isSavingUserPost || isAddingComment}
+            disabled={isBusy}
             onOpen={session => {
               openSession(session);
               setFormSeed(previous => ({
@@ -258,28 +289,38 @@ const App: React.FC = () => {
                 >
                   갤러리 설정
                 </h2>
-                {galleryData && !isLoading && (
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    onClick={handleReturnToGallery}
-                    className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                    disabled={isLoading}
+                    className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-200/60 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50"
+                    onClick={() => {
+                      setFormSeed(previous => ({ key: previous.key + 1, settings: {} }));
+                      setError(null);
+                    }}
                   >
-                    <i className="fas fa-arrow-left mr-2" aria-hidden="true" />
-                    기존 갤러리로 돌아가기
+                    <Icon icon="fas fa-undo" className="mr-2" />
+                    설정 초기화
                   </button>
-                )}
+                  {galleryData && !isLoading && (
+                    <button
+                      type="button"
+                      onClick={handleReturnToGallery}
+                      className={secondaryButtonClass}
+                    >
+                      <Icon icon="fas fa-arrow-left" className="mr-2" />
+                      기존 갤러리로 돌아가기
+                    </button>
+                  )}
+                </div>
               </div>
-              <button
-                type="button"
-                disabled={isLoading}
-                className="mb-4 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 disabled:opacity-50"
-                onClick={() => {
-                  setFormSeed(previous => ({ key: previous.key + 1, settings: {} }));
-                  setError(null);
-                }}
-              >
-                설정 초기화
-              </button>
+              {galleryData && !isLoading && galleryContext && !galleryContext.useSearch && (
+                <p className="mb-4 rounded-lg bg-slate-200/50 px-3 py-2 text-sm text-slate-600">
+                  새로 생성하면 지금 갤러리(
+                  <span className="font-semibold text-slate-700">{galleryData.galleryTitle}</span>
+                  )는 보관함에 자동으로 보관됩니다.
+                </p>
+              )}
               <GalleryCreationFormContent
                 isLoading={isLoading}
                 onSubmit={handleCreateGallery}
@@ -293,12 +334,13 @@ const App: React.FC = () => {
                   onCancel={cancelGeneration}
                 />
               )}
+              {generationFailureCard}
             </section>
           )}
 
           {isGalleryView && galleryData && !isLoading && (
             <section
-              className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-xl shadow-slate-200/60 animate-fade-in"
+              className="rounded-2xl border border-slate-100 bg-white shadow-xl shadow-slate-200/60 animate-fade-in"
               aria-labelledby="gallery-content-title"
             >
               <GalleryHeader
@@ -306,117 +348,47 @@ const App: React.FC = () => {
                 worldlineId={galleryContext?.worldlineId}
                 sources={galleryData.sources}
               />
-              <div className="min-h-[500px] bg-slate-50/30 p-4 md:p-6">
-                {!!galleryData.warnings?.length && (
-                  <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-slate-800">
-                    <p className="mb-2 font-semibold">생성 단계 기록</p>
-                    <ul aria-label="갤러리 생성 경고" className="space-y-2">
-                      {galleryData.warnings.map((warning, index) => (
-                        <li key={`${warning.code}-${warning.postId}-${index}`}>
-                          <span className="mr-2 font-semibold">
-                            {warning.stage === 'evaluation'
-                              ? '반응 수치 평가 실패'
-                              : warning.stage === 'comments'
-                                ? '댓글 생성 실패'
-                                : '생성 안내'}
-                          </span>
-                          {warning.postId && (
-                            <button
-                              className="mr-2 underline"
-                              onClick={() => handleSelectPost(warning.postId!)}
-                            >
-                              {galleryData.posts.find(post => post.id === warning.postId)?.title ??
-                                '게시물'}
-                            </button>
-                          )}
-                          {warning.message}
-                        </li>
-                      ))}
-                    </ul>
-                    {galleryData.warnings.some(
-                      warning =>
-                        warning.postId &&
-                        (warning.stage === 'evaluation' || warning.stage === 'comments'),
-                    ) && (
-                      <button
-                        type="button"
-                        disabled={isAddingComment || isSavingUserPost || isLoading}
-                        className="mt-3 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:opacity-50"
-                        onClick={() => void retryFailedStages()}
-                      >
-                        실패 지점에서 재시도
-                      </button>
-                    )}
-                  </div>
-                )}
-                {galleryContext && (
-                  <div className="mb-4">
-                    <FixedNicknameSettings
-                      value={galleryContext.fixedNicknames ?? []}
-                      onSave={saveFixedNicknames}
-                      reservedNickname={
-                        currentUserProfile?.nicknameType === 'FIXED'
-                          ? currentUserProfile.nickname
-                          : undefined
-                      }
-                      disabled={isLoading || isSavingUserPost || isAddingComment}
-                    />
-                  </div>
-                )}
-                {galleryContext && !galleryContext.useSearch && (
-                  <WorldlineMemory
-                    key={galleryContext.worldlineId}
-                    notes={galleryContext.continuityNotes ?? ''}
-                    currentEvent={galleryContext.discussionContext}
-                    disabled={isLoading || isSavingUserPost || isAddingComment}
-                    onSave={saveContinuityNotes}
-                    onContinue={nextEvent => {
-                      if (!currentUserProfile) return;
-                      void createGallery(
-                        {
-                          ...galleryContext,
-                          discussionContext: nextEvent || galleryContext.discussionContext,
-                          userProfile: currentUserProfile,
-                        },
-                        true,
-                      ).then(created => {
-                        if (created) navigate('gallery-list');
-                      });
-                    }}
-                  />
-                )}
-                <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-                  <h2
-                    id="gallery-content-title"
-                    tabIndex={-1}
-                    className="text-lg font-bold text-slate-800 outline-none"
-                  >
-                    {view === 'post' ? '게시물 보기' : '게시물 목록'}
-                  </h2>
-                  <button
-                    type="button"
-                    onClick={handleOpenSetup}
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                  >
-                    <i className="fas fa-sliders-h mr-2" aria-hidden="true" />
-                    현재 설정으로 새 갤러리 만들기
-                  </button>
-                </div>
-
+              <div className="min-h-[500px] rounded-b-2xl bg-slate-50/30 p-4 md:p-6">
                 {view === 'post' && selectedPost ? (
                   <>
-                    <button
-                      type="button"
-                      onClick={handleBackToList}
-                      className="group mb-6 flex items-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                      aria-label="게시물 목록으로 돌아가기"
-                    >
-                      <i
-                        className="fas fa-arrow-left mr-2 transition-transform group-hover:-translate-x-1"
-                        aria-hidden="true"
-                      />{' '}
-                      목록으로
-                    </button>
+                    <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+                      <h2
+                        id="gallery-content-title"
+                        tabIndex={-1}
+                        className="text-lg font-bold text-slate-800 outline-none"
+                      >
+                        게시물 보기
+                      </h2>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleOpenSetup}
+                          className={secondaryButtonClass}
+                        >
+                          <Icon icon="fas fa-sliders-h" className="mr-2" />
+                          현재 설정으로 새 갤러리 만들기
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleBackToList}
+                          className={`group ${secondaryButtonClass}`}
+                          aria-label="게시물 목록으로 돌아가기"
+                        >
+                          <Icon
+                            icon="fas fa-arrow-left"
+                            className="mr-2 transition-transform group-hover:-translate-x-1"
+                          />
+                          목록으로
+                        </button>
+                      </div>
+                    </div>
+                    <StageWarnings
+                      warnings={postWarnings}
+                      posts={galleryData.posts}
+                      listLabel="이 게시물의 생성 경고"
+                      retryDisabled={isBusy}
+                      onRetry={() => void retryFailedStages(selectedPost.id)}
+                    />
                     <PostView
                       post={selectedPost}
                       currentUserProfile={currentUserProfile}
@@ -434,7 +406,7 @@ const App: React.FC = () => {
                       .map(failure => (
                         <div
                           key={failure.commentId}
-                          className="mt-4 space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-4"
+                          className="mt-4 space-y-2 rounded-xl border border-amber-300 bg-amber-50 p-4"
                           role="status"
                         >
                           <p className="text-sm font-semibold text-slate-800">
@@ -452,37 +424,106 @@ const App: React.FC = () => {
                           <p className="text-sm text-slate-800">
                             AI 반응 생성 실패: {failure.message}
                           </p>
-                          {failure.reconnect && (
+                          <div className="flex flex-wrap gap-2">
+                            {failure.reconnect && (
+                              <button
+                                type="button"
+                                className={secondaryButtonClass}
+                                onClick={handleOpenSetup}
+                              >
+                                연결 설정 확인
+                              </button>
+                            )}
                             <button
-                              className="mr-3 rounded border border-slate-300 bg-white px-3 py-2 text-sm"
-                              onClick={handleOpenSetup}
+                              type="button"
+                              disabled={isAddingComment || !failure.retryable}
+                              className={secondaryButtonClass}
+                              onClick={() => void retryReaction(selectedPost.id, failure.commentId)}
                             >
-                              연결 설정 확인
+                              AI 반응 다시 생성
                             </button>
-                          )}
-                          <button
-                            disabled={isAddingComment || !failure.retryable}
-                            className="rounded border border-slate-300 bg-white px-3 py-2 text-sm disabled:opacity-50"
-                            onClick={() => void retryReaction(selectedPost.id, failure.commentId)}
-                          >
-                            AI 반응 다시 생성
-                          </button>
+                          </div>
                         </div>
                       ))}
                   </>
                 ) : (
-                  <PostList
-                    galleryId={galleryContext?.worldlineId}
-                    posts={galleryData.posts}
-                    onSelectPost={handleSelectPost}
-                    onWritePost={handleOpenWriteModal}
-                  />
+                  <>
+                    {generationFailureCard}
+                    <StageWarnings
+                      warnings={galleryData.warnings ?? []}
+                      posts={galleryData.posts}
+                      listLabel="갤러리 생성 경고"
+                      retryDisabled={isBusy}
+                      onRetry={() => void retryFailedStages()}
+                      onSelectPost={handleSelectPost}
+                    />
+                    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                      <h2
+                        id="gallery-content-title"
+                        tabIndex={-1}
+                        className="text-lg font-bold text-slate-800 outline-none"
+                      >
+                        게시물 목록
+                      </h2>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {galleryContext && (
+                          <FixedNicknameSettings
+                            value={galleryContext.fixedNicknames ?? []}
+                            onSave={saveFixedNicknames}
+                            reservedNickname={
+                              currentUserProfile?.nicknameType === 'FIXED'
+                                ? currentUserProfile.nickname
+                                : undefined
+                            }
+                            disabled={isBusy}
+                          />
+                        )}
+                        <button
+                          type="button"
+                          onClick={handleOpenSetup}
+                          className={secondaryButtonClass}
+                        >
+                          <Icon icon="fas fa-sliders-h" className="mr-2" />
+                          현재 설정으로 새 갤러리 만들기
+                        </button>
+                      </div>
+                    </div>
+                    {galleryContext && !galleryContext.useSearch && (
+                      <WorldlineMemory
+                        key={galleryContext.worldlineId}
+                        notes={galleryContext.continuityNotes ?? ''}
+                        currentEvent={galleryContext.discussionContext}
+                        disabled={isBusy}
+                        onSave={saveContinuityNotes}
+                        onContinue={(nextEvent, notes) => {
+                          if (!currentUserProfile) return;
+                          void createGallery(
+                            {
+                              ...galleryContext,
+                              continuityNotes: notes,
+                              discussionContext: nextEvent || galleryContext.discussionContext,
+                              userProfile: currentUserProfile,
+                            },
+                            true,
+                          ).then(created => {
+                            if (created) navigate('gallery-list');
+                          });
+                        }}
+                      />
+                    )}
+                    <PostList
+                      galleryId={galleryContext?.worldlineId}
+                      posts={galleryData.posts}
+                      onSelectPost={handleSelectPost}
+                      onWritePost={handleOpenWriteModal}
+                    />
+                  </>
                 )}
               </div>
             </section>
           )}
 
-          {isGalleryView && (
+          {view === 'gallery-list' && (
             <WorldviewFeedback
               isVisible={!!galleryData && !isLoading && galleryContext?.worldviewValue === 'CUSTOM'}
               isFetching={isFetchingFeedback}
