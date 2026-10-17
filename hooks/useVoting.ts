@@ -1,84 +1,50 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
+
+type Vote = 'rec' | 'nonrec' | null;
+
+interface PendingVote {
+  // The props the vote was cast against; once the parent passes new props they win.
+  base: { recs: number; nonRecs: number; voted: Vote };
+  voted: Vote;
+}
+
+const shiftCount = (count: number, side: 'rec' | 'nonrec', from: Vote, to: Vote) =>
+  count - (from === side ? 1 : 0) + (to === side ? 1 : 0);
 
 export const useVoting = (
   initialRecs: number,
   initialNonRecs: number,
-  initialVoted: 'rec' | 'nonrec' | null = null,
-  onVoteChange?: (voted: 'rec' | 'nonrec' | null, recs: number, nonRecs: number) => void,
+  initialVoted: Vote = null,
+  onVoteChange?: (voted: Vote, recs: number, nonRecs: number) => void,
 ) => {
-  const [recs, setRecs] = useState(initialRecs);
-  const [nonRecs, setNonRecs] = useState(initialNonRecs);
-  const [voted, setVoted] = useState<'rec' | 'nonrec' | null>(initialVoted);
+  const [pending, setPending] = useState<PendingVote | null>(null);
+  const baseVoted = initialVoted || null;
+  const isPendingCurrent =
+    pending !== null &&
+    pending.base.recs === initialRecs &&
+    pending.base.nonRecs === initialNonRecs &&
+    pending.base.voted === baseVoted;
+  const voted = isPendingCurrent ? pending.voted : baseVoted;
+  const recs = shiftCount(initialRecs, 'rec', baseVoted, voted);
+  const nonRecs = shiftCount(initialNonRecs, 'nonrec', baseVoted, voted);
 
-  useEffect(() => {
-    setRecs(initialRecs);
-  }, [initialRecs]);
+  const castVote = useCallback(
+    (side: 'rec' | 'nonrec') => {
+      // Voting the same side again cancels it; the other side switches the vote.
+      const nextVoted = voted === side ? null : side;
+      const nextRecs = shiftCount(recs, 'rec', voted, nextVoted);
+      const nextNonRecs = shiftCount(nonRecs, 'nonrec', voted, nextVoted);
+      setPending({
+        base: { recs: initialRecs, nonRecs: initialNonRecs, voted: baseVoted },
+        voted: nextVoted,
+      });
+      onVoteChange?.(nextVoted, nextRecs, nextNonRecs);
+    },
+    [voted, recs, nonRecs, initialRecs, initialNonRecs, baseVoted, onVoteChange],
+  );
 
-  useEffect(() => {
-    setNonRecs(initialNonRecs);
-  }, [initialNonRecs]);
-
-  useEffect(() => {
-    setVoted(initialVoted || null);
-  }, [initialVoted]);
-
-  const handleRecommend = useCallback(() => {
-    let nextVoted: 'rec' | 'nonrec' | null = null;
-    let nextRecs = recs;
-    let nextNonRecs = nonRecs;
-
-    if (voted === 'rec') {
-      // Cancel recommendation
-      nextRecs = recs - 1;
-      nextVoted = null;
-    } else if (voted === 'nonrec') {
-      // Switch to recommendation
-      nextRecs = recs + 1;
-      nextNonRecs = nonRecs - 1;
-      nextVoted = 'rec';
-    } else {
-      // New recommendation
-      nextRecs = recs + 1;
-      nextVoted = 'rec';
-    }
-
-    setRecs(nextRecs);
-    setNonRecs(nextNonRecs);
-    setVoted(nextVoted);
-
-    if (onVoteChange) {
-      onVoteChange(nextVoted, nextRecs, nextNonRecs);
-    }
-  }, [voted, recs, nonRecs, onVoteChange]);
-
-  const handleNonRecommend = useCallback(() => {
-    let nextVoted: 'rec' | 'nonrec' | null = null;
-    let nextRecs = recs;
-    let nextNonRecs = nonRecs;
-
-    if (voted === 'nonrec') {
-      // Cancel non-recommendation
-      nextNonRecs = nonRecs - 1;
-      nextVoted = null;
-    } else if (voted === 'rec') {
-      // Switch to non-recommendation
-      nextNonRecs = nonRecs + 1;
-      nextRecs = recs - 1;
-      nextVoted = 'nonrec';
-    } else {
-      // New non-recommendation
-      nextNonRecs = nonRecs + 1;
-      nextVoted = 'nonrec';
-    }
-
-    setRecs(nextRecs);
-    setNonRecs(nextNonRecs);
-    setVoted(nextVoted);
-
-    if (onVoteChange) {
-      onVoteChange(nextVoted, nextRecs, nextNonRecs);
-    }
-  }, [voted, recs, nonRecs, onVoteChange]);
+  const handleRecommend = useCallback(() => castVote('rec'), [castVote]);
+  const handleNonRecommend = useCallback(() => castVote('nonrec'), [castVote]);
 
   return {
     recs,

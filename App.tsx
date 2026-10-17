@@ -50,7 +50,7 @@ const App: React.FC = () => {
     isSavingUserPost,
     isAddingComment,
     highlightedCommentIds,
-    streamingText,
+    isStreaming,
     generationPhase,
     generationMessage,
     generationProgress,
@@ -326,7 +326,7 @@ const App: React.FC = () => {
                 onSubmit={handleCreateGallery}
                 setFormError={setError}
               />
-              {isLoading && streamingText !== null && (
+              {isLoading && isStreaming && (
                 <StreamingStatus
                   phase={generationPhase}
                   message={generationMessage}

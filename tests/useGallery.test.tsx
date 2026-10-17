@@ -110,6 +110,7 @@ interface StorageHarness {
   storageWarning: string | null;
   selectedPostId: string | null;
   setGalleryData: ReturnType<typeof vi.fn>;
+  setGalleryDataDeferred: ReturnType<typeof vi.fn>;
   replaceSession: ReturnType<typeof vi.fn>;
   setSelectedPostId: ReturnType<typeof vi.fn>;
   selectPost: ReturnType<typeof vi.fn>;
@@ -125,7 +126,7 @@ interface UIHarness {
   isSavingUserPost: boolean;
   isAddingComment: boolean;
   highlightedCommentIds: Set<string>;
-  streamingText: string | null;
+  isStreaming: boolean;
   generationPhase: string;
   generationMessage: string;
   generationProgress: number | null;
@@ -140,7 +141,7 @@ interface UIHarness {
   setIsSavingUserPost: ReturnType<typeof vi.fn>;
   setIsAddingComment: ReturnType<typeof vi.fn>;
   triggerCommentHighlight: ReturnType<typeof vi.fn>;
-  setStreamingText: ReturnType<typeof vi.fn>;
+  setIsStreaming: ReturnType<typeof vi.fn>;
   setGenerationPhase: ReturnType<typeof vi.fn>;
   setGenerationMessage: ReturnType<typeof vi.fn>;
   setGenerationProgress: ReturnType<typeof vi.fn>;
@@ -171,6 +172,9 @@ beforeEach(() => {
     setGalleryData: vi.fn((value: SetStateAction<GalleryData | null>) => {
       storage.galleryData = typeof value === 'function' ? value(storage.galleryData) : value;
     }),
+    setGalleryDataDeferred: vi.fn((value: SetStateAction<GalleryData | null>) => {
+      storage.galleryData = typeof value === 'function' ? value(storage.galleryData) : value;
+    }),
     replaceSession: vi.fn(
       (data: GalleryData, nextContext: GalleryContextParams, nextProfile: UserProfile) => {
         storage.galleryData = data;
@@ -195,7 +199,7 @@ beforeEach(() => {
     isSavingUserPost: false,
     isAddingComment: false,
     highlightedCommentIds: new Set(),
-    streamingText: null,
+    isStreaming: false,
     generationPhase: 'connecting',
     generationMessage: 'connecting',
     generationProgress: null,
@@ -228,8 +232,8 @@ beforeEach(() => {
     triggerCommentHighlight: vi.fn((ids: Set<string>) => {
       ui.highlightedCommentIds = ids;
     }),
-    setStreamingText: vi.fn((value: SetStateAction<string | null>) => {
-      ui.streamingText = typeof value === 'function' ? value(ui.streamingText) : value;
+    setIsStreaming: vi.fn((value: boolean) => {
+      ui.isStreaming = value;
     }),
     setGenerationPhase: vi.fn((value: string) => {
       ui.generationPhase = value;
@@ -248,7 +252,7 @@ beforeEach(() => {
     }),
     resetForNewGeneration: vi.fn(() => {
       ui.isLoading = true;
-      ui.streamingText = '';
+      ui.isStreaming = true;
       ui.error = null;
     }),
   };
@@ -351,8 +355,10 @@ describe('useGallery gallery generation', () => {
     };
     const nextGallery = { ...makeGallery(makePost('generated')), warnings: [warning] };
     const deferred = makeDeferred<GalleryData>();
+    let emitChunk: (text: string) => void = () => undefined;
     vi.mocked(galleryService.createGalleryStreamed).mockImplementation(
       (_params, onChunk, _signal, onPhase) => {
+        emitChunk = onChunk;
         onChunk('partial payload');
         onPhase?.('posts', 'building posts', 70);
         return deferred.promise;
@@ -370,9 +376,14 @@ describe('useGallery gallery generation', () => {
     expect(streamedRequest).not.toHaveProperty('worldlineId');
     expect(storage.galleryData).toBe(previousGallery);
     expect(storage.replaceSession).not.toHaveBeenCalled();
-    expect(ui.streamingText).toBe('partial payload');
+    expect(ui.isStreaming).toBe(true);
     expect(ui.setGenerationPhase).toHaveBeenCalledWith('posts');
     expect(ui.setGenerationProgress).toHaveBeenCalledWith(70);
+    // Raw chunks must not touch React state: each update would re-render the whole app.
+    const uiSetters = Object.values(ui).filter(value => vi.isMockFunction(value));
+    const setterCalls = uiSetters.map(setter => setter.mock.calls.length);
+    act(() => emitChunk('more payload'));
+    expect(uiSetters.map(setter => setter.mock.calls.length)).toEqual(setterCalls);
 
     deferred.resolve(nextGallery);
     await act(async () => expect(request).resolves.toBe(true));

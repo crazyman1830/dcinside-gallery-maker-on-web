@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 
 export const useUIState = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -11,7 +11,7 @@ export const useUIState = () => {
   const [isAddingComment, setIsAddingComment] = useState<boolean>(false);
 
   const [highlightedCommentIds, setHighlightedCommentIds] = useState<Set<string>>(new Set());
-  const [streamingText, setStreamingText] = useState<string | null>(null);
+  const [isStreaming, setIsStreaming] = useState<boolean>(false);
   const [generationPhase, setGenerationPhase] = useState<string>('connecting');
   const [generationMessage, setGenerationMessage] =
     useState<string>('AI 모델에 연결하고 있습니다.');
@@ -52,43 +52,66 @@ export const useUIState = () => {
     setSuccessMessage(null);
     setWarningMessage(null);
     setIsLoading(true);
-    setStreamingText('');
+    setIsStreaming(true);
     setGenerationPhase('connecting');
     setGenerationMessage('AI 모델에 연결하고 있습니다.');
     setGenerationProgress(null);
     setWorldviewFeedback(null);
   }, []);
 
-  return {
-    isLoading,
-    setIsLoading,
-    error,
-    setError,
-    successMessage,
-    setSuccessMessage,
-    warningMessage,
-    setWarningMessage,
-    isWriteModalOpen,
-    openWriteModal,
-    closeWriteModal,
-    isSavingUserPost,
-    setIsSavingUserPost,
-    isAddingComment,
-    setIsAddingComment,
-    highlightedCommentIds,
-    triggerCommentHighlight,
-    streamingText,
-    setStreamingText,
-    generationPhase,
-    setGenerationPhase,
-    generationMessage,
-    setGenerationMessage,
-    generationProgress,
-    setGenerationProgress,
-    worldviewFeedback,
-    setWorldviewFeedback,
-    isFetchingFeedback,
-    setIsFetchingFeedback,
-    resetForNewGeneration,
-  };
+  // Callers list this object as a hook dependency, so it must only change with UI state.
+  return useMemo(
+    () => ({
+      isLoading,
+      setIsLoading,
+      error,
+      setError,
+      successMessage,
+      setSuccessMessage,
+      warningMessage,
+      setWarningMessage,
+      isWriteModalOpen,
+      openWriteModal,
+      closeWriteModal,
+      isSavingUserPost,
+      setIsSavingUserPost,
+      isAddingComment,
+      setIsAddingComment,
+      highlightedCommentIds,
+      triggerCommentHighlight,
+      isStreaming,
+      setIsStreaming,
+      generationPhase,
+      setGenerationPhase,
+      generationMessage,
+      setGenerationMessage,
+      generationProgress,
+      setGenerationProgress,
+      worldviewFeedback,
+      setWorldviewFeedback,
+      isFetchingFeedback,
+      setIsFetchingFeedback,
+      resetForNewGeneration,
+    }),
+    [
+      closeWriteModal,
+      error,
+      generationMessage,
+      generationPhase,
+      generationProgress,
+      highlightedCommentIds,
+      isAddingComment,
+      isFetchingFeedback,
+      isLoading,
+      isSavingUserPost,
+      isStreaming,
+      isWriteModalOpen,
+      openWriteModal,
+      resetForNewGeneration,
+      successMessage,
+      triggerCommentHighlight,
+      warningMessage,
+      worldviewFeedback,
+    ],
+  );
 };

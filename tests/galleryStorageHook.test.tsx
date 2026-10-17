@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   BLOCKED_SEARCH_SESSION_WARNING,
   CORRUPT_SESSION_STORAGE_WARNING,
+  DEFERRED_SAVE_DELAY_MS,
   SEARCH_SESSION_STORAGE_WARNING,
   SESSION_STORAGE_KEY,
   SESSION_CONFLICT_WARNING,
@@ -397,5 +398,208 @@ describe('useGalleryStorage', () => {
     await waitFor(() => expect(hook.result.current.storageWarning).toContain('자동 저장 잠금'));
     expect(localStorage.getItem(SESSION_STORAGE_KEY)).toBeNull();
     expect(hook.result.current.galleryData).toEqual(gallery);
+  });
+});
+
+describe('useGalleryStorage deferred saves', () => {
+  const withRecommendations =
+    (recommendations: number) =>
+    (previous: GalleryData | null): GalleryData => ({
+      ...previous!,
+      posts: [{ ...previous!.posts[0], recommendations }],
+    });
+  const storedRecommendations = () =>
+    JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY)!).gallery.posts[0].recommendations;
+  const queueLocks = () => {
+    const queued: (() => void)[] = [];
+    vi.stubGlobal('navigator', {
+      locks: {
+        request: vi.fn(
+          (_name: string, callback: () => void) =>
+            new Promise<void>(resolve => {
+              queued.push(() => {
+                callback();
+                resolve();
+              });
+            }),
+        ),
+      },
+    });
+    return queued;
+  };
+
+  beforeEach(() => {
+    localStorage.clear();
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('coalesces a burst of deferred updates into one write of the latest session', () => {
+    const hook = renderHook(() => useGalleryStorage());
+    act(() => hook.result.current.replaceSession(gallery, context, profile));
+    const setItem = vi.spyOn(Storage.prototype, 'setItem');
+
+    for (const recommendations of [1, 2, 3]) {
+      act(() => hook.result.current.setGalleryDataDeferred(withRecommendations(recommendations)));
+      act(() => vi.advanceTimersByTime(100));
+    }
+    expect(hook.result.current.galleryData?.posts[0].recommendations).toBe(3);
+    expect(setItem).not.toHaveBeenCalled();
+
+    act(() => vi.advanceTimersByTime(DEFERRED_SAVE_DELAY_MS));
+    expect(setItem).toHaveBeenCalledTimes(1);
+    expect(storedRecommendations()).toBe(3);
+  });
+
+  it('lets an immediate update write the pending deferred change instead of writing twice', () => {
+    const hook = renderHook(() => useGalleryStorage());
+    act(() => hook.result.current.replaceSession(gallery, context, profile));
+    const setItem = vi.spyOn(Storage.prototype, 'setItem');
+
+    act(() => hook.result.current.setGalleryDataDeferred(withRecommendations(1)));
+    act(() =>
+      hook.result.current.setGalleryData(previous => ({ ...previous!, galleryTitle: '즉시 저장' })),
+    );
+    expect(setItem).toHaveBeenCalledTimes(1);
+    expect(storedRecommendations()).toBe(1);
+
+    // An immediate update batched before a deferred one still saves right away.
+    act(() => {
+      hook.result.current.setGalleryData(previous => ({ ...previous!, galleryTitle: '묶음' }));
+      hook.result.current.setGalleryDataDeferred(withRecommendations(2));
+    });
+    expect(setItem).toHaveBeenCalledTimes(2);
+    expect(storedRecommendations()).toBe(2);
+
+    act(() => vi.advanceTimersByTime(DEFERRED_SAVE_DELAY_MS));
+    expect(setItem).toHaveBeenCalledTimes(2);
+  });
+
+  it('flushes when the page is hidden and on unmount', () => {
+    const hook = renderHook(() => useGalleryStorage());
+    act(() => hook.result.current.replaceSession(gallery, context, profile));
+
+    act(() => hook.result.current.setGalleryDataDeferred(withRecommendations(4)));
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    act(() => document.dispatchEvent(new Event('visibilitychange')));
+    expect(storedRecommendations()).toBe(0);
+    visibility.mockReturnValue('hidden');
+    act(() => document.dispatchEvent(new Event('visibilitychange')));
+    expect(storedRecommendations()).toBe(4);
+
+    act(() => hook.result.current.setGalleryDataDeferred(withRecommendations(5)));
+    hook.unmount();
+    expect(storedRecommendations()).toBe(5);
+  });
+
+  it('writes synchronously on pagehide because a lock queued during unload is never granted', async () => {
+    const queued = queueLocks();
+    const hook = renderHook(() => useGalleryStorage());
+    act(() => hook.result.current.replaceSession(gallery, context, profile));
+    await act(async () => queued.shift()!());
+    const setItem = vi.spyOn(Storage.prototype, 'setItem');
+
+    act(() => hook.result.current.setGalleryDataDeferred(withRecommendations(6)));
+    expect(queued).toHaveLength(0);
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    act(() => document.dispatchEvent(new Event('visibilitychange')));
+    expect(queued).toHaveLength(1);
+    expect(setItem).not.toHaveBeenCalled();
+
+    act(() => window.dispatchEvent(new Event('pagehide')));
+    expect(setItem).toHaveBeenCalledTimes(1);
+    expect(storedRecommendations()).toBe(6);
+
+    await act(async () => queued.shift()!());
+    expect(setItem).toHaveBeenCalledTimes(1);
+  });
+
+  it('includes votes made while the deferred write waits for the lock', async () => {
+    const queued = queueLocks();
+    const hook = renderHook(() => useGalleryStorage());
+    act(() => hook.result.current.replaceSession(gallery, context, profile));
+    await act(async () => queued.shift()!());
+
+    act(() => hook.result.current.setGalleryDataDeferred(withRecommendations(7)));
+    act(() => vi.advanceTimersByTime(DEFERRED_SAVE_DELAY_MS));
+    expect(queued).toHaveLength(1);
+    act(() => hook.result.current.setGalleryDataDeferred(withRecommendations(8)));
+    await act(async () => queued.shift()!());
+    expect(storedRecommendations()).toBe(8);
+    act(() => vi.advanceTimersByTime(DEFERRED_SAVE_DELAY_MS));
+    expect(queued).toHaveLength(0);
+  });
+
+  it('keeps conflict detection for deferred writes', () => {
+    const first = renderHook(() => useGalleryStorage());
+    act(() => first.result.current.replaceSession(gallery, context, profile));
+    const second = renderHook(() => useGalleryStorage());
+    act(() =>
+      first.result.current.setGalleryData(previous => ({ ...previous!, galleryTitle: '첫 탭' })),
+    );
+    const latestRaw = localStorage.getItem(SESSION_STORAGE_KEY);
+
+    act(() => second.result.current.setGalleryDataDeferred(withRecommendations(9)));
+    act(() => vi.advanceTimersByTime(DEFERRED_SAVE_DELAY_MS));
+    expect(localStorage.getItem(SESSION_STORAGE_KEY)).toBe(latestRaw);
+    expect(second.result.current.storageWarning).toBe(SESSION_CONFLICT_WARNING);
+    expect(second.result.current.galleryData?.posts[0].recommendations).toBe(9);
+  });
+
+  it('reports a lock failure and never falls back to an unlocked write on pagehide', async () => {
+    vi.stubGlobal('navigator', {
+      locks: { request: vi.fn().mockRejectedValue(new Error('lock unavailable')) },
+    });
+    const hook = renderHook(() => useGalleryStorage());
+    act(() => hook.result.current.replaceSession(gallery, context, profile));
+    await act(async () => undefined);
+    act(() => hook.result.current.setGalleryDataDeferred(withRecommendations(10)));
+    await act(() => vi.advanceTimersByTimeAsync(DEFERRED_SAVE_DELAY_MS));
+    expect(hook.result.current.storageWarning).toContain('자동 저장 잠금');
+
+    act(() => window.dispatchEvent(new Event('pagehide')));
+    expect(localStorage.getItem(SESSION_STORAGE_KEY)).toBeNull();
+    expect(hook.result.current.galleryData?.posts[0].recommendations).toBe(10);
+  });
+
+  it('writes pending votes for the previous session before a search session takes over', () => {
+    const hook = renderHook(() => useGalleryStorage());
+    act(() => hook.result.current.replaceSession(gallery, context, profile));
+    act(() => hook.result.current.setGalleryDataDeferred(withRecommendations(11)));
+
+    act(() =>
+      hook.result.current.replaceSession(gallery, { ...context, useSearch: true }, profile),
+    );
+    expect(storedRecommendations()).toBe(11);
+    expect(hook.result.current.storageWarning).toBe(SEARCH_SESSION_STORAGE_WARNING);
+
+    // Votes on a search session are never persisted, deferred or not.
+    const setItem = vi.spyOn(Storage.prototype, 'setItem');
+    act(() => hook.result.current.setGalleryDataDeferred(withRecommendations(12)));
+    act(() => vi.advanceTimersByTime(DEFERRED_SAVE_DELAY_MS));
+    act(() => window.dispatchEvent(new Event('pagehide')));
+    expect(setItem).not.toHaveBeenCalled();
+    expect(storedRecommendations()).toBe(11);
+  });
+
+  it('keeps the search session warning when the previous session write is granted later', async () => {
+    const queued = queueLocks();
+    const hook = renderHook(() => useGalleryStorage());
+    act(() => hook.result.current.replaceSession(gallery, context, profile));
+    await act(async () => queued.shift()!());
+    act(() => hook.result.current.setGalleryDataDeferred(withRecommendations(13)));
+
+    act(() =>
+      hook.result.current.replaceSession(gallery, { ...context, useSearch: true }, profile),
+    );
+    expect(hook.result.current.storageWarning).toBe(SEARCH_SESSION_STORAGE_WARNING);
+    await act(async () => queued.shift()!());
+    expect(storedRecommendations()).toBe(13);
+    expect(hook.result.current.storageWarning).toBe(SEARCH_SESSION_STORAGE_WARNING);
   });
 });

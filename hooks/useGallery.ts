@@ -175,12 +175,9 @@ export const useGallery = () => {
         };
         const data = await galleryService.createGalleryStreamed(
           generationParams,
-          text => {
-            if (!isCurrent()) return;
-            // Keep only a small rolling sample. Progress is driven by explicit
-            // server phases instead of repeatedly parsing the complete JSON.
-            ui.setStreamingText(previous => `${previous ?? ''}${text}`.slice(-4_000));
-          },
+          // Raw chunks are never rendered: progress is driven by explicit server
+          // phases, so storing chunks would only re-render the whole app per chunk.
+          () => undefined,
           request.abortController.signal,
           (phase, message, progress) => {
             if (!isCurrent()) return;
@@ -249,7 +246,7 @@ export const useGallery = () => {
         if (isCurrent()) {
           generationRequestRef.current = null;
           ui.setIsLoading(false);
-          ui.setStreamingText(null);
+          ui.setIsStreaming(false);
         }
       }
     },
@@ -732,7 +729,7 @@ export const useGallery = () => {
       recsCount: number,
       nonRecsCount: number,
     ) => {
-      storage.setGalleryData(previous =>
+      storage.setGalleryDataDeferred(previous =>
         previous
           ? {
               ...previous,
@@ -761,7 +758,7 @@ export const useGallery = () => {
       recsCount: number,
       nonRecsCount: number,
     ) => {
-      storage.setGalleryData(previous =>
+      storage.setGalleryDataDeferred(previous =>
         previous
           ? {
               ...previous,
@@ -804,7 +801,7 @@ export const useGallery = () => {
       setGenerationFailure(null);
       ui.closeWriteModal();
       ui.setIsLoading(false);
-      ui.setStreamingText(null);
+      ui.setIsStreaming(false);
       ui.setError(null);
       ui.setWarningMessage(null);
       ui.setWorldviewFeedback(null);
@@ -867,7 +864,7 @@ export const useGallery = () => {
     isSavingUserPost: ui.isSavingUserPost,
     isAddingComment: ui.isAddingComment,
     highlightedCommentIds: ui.highlightedCommentIds,
-    streamingText: ui.streamingText,
+    isStreaming: ui.isStreaming,
     generationPhase: ui.generationPhase,
     generationMessage: ui.generationMessage,
     generationProgress: ui.generationProgress,

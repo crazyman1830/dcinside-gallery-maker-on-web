@@ -368,6 +368,18 @@ const loadGalleryStorageResult = (storage: Storage): GalleryStorageLoadResult =>
 export const loadGalleryStorageState = (storage: Storage): GalleryStorageState =>
   loadGalleryStorageResult(storage).state;
 
+/** Votes made within this window share one serialized write of the latest session. */
+export const DEFERRED_SAVE_DELAY_MS = 500;
+
+const LOCK_FAILURE_WARNING =
+  '자동 저장 잠금을 얻지 못해 현재 변경 내용이 저장되지 않았습니다. 필요한 내용은 JSON으로 내보내주세요.';
+
+interface DeferredSave {
+  snapshot: GalleryStorageState;
+  timer: ReturnType<typeof setTimeout> | undefined;
+  settled: boolean;
+}
+
 export const useGalleryStorage = () => {
   const [initialLoad] = useState<GalleryStorageLoadResult & { storedRaw: string | null }>(() => {
     try {
@@ -388,6 +400,10 @@ export const useGalleryStorage = () => {
   const preserveStoredSessionRef = useRef(initialLoad.preserveStoredSession);
   const storedRawRef = useRef(initialLoad.storedRaw);
   const storageConflictRef = useRef(false);
+  const latestStateRef = useRef(initialLoad.state);
+  // null: no update since the last save effect; true: only deferrable updates; false: any other.
+  const deferNextSaveRef = useRef<boolean | null>(null);
+  const deferredSaveRef = useRef<DeferredSave | null>(null);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -402,83 +418,176 @@ export const useGalleryStorage = () => {
     return () => window.removeEventListener('storage', handleStorage);
   }, []);
 
-  useEffect(() => {
-    if (storageConflictRef.current || state === initialLoad.state) return;
-    if (state.galleryContext?.useSearch) {
-      preserveStoredSessionRef.current = true;
-      setStorageWarning(SEARCH_SESSION_STORAGE_WARNING);
-      return;
-    }
-    let cancelled = false;
-    const save = () => {
-      // A queued lock may be granted after a newer state or another tab has taken over.
-      if (cancelled || storageConflictRef.current) return;
-      if (!state.galleryData || !state.galleryContext) {
-        if (preserveStoredSessionRef.current) return;
-        try {
-          if (localStorage.getItem(SESSION_STORAGE_KEY) !== storedRawRef.current) {
-            storageConflictRef.current = true;
-            setStorageWarning(SESSION_CONFLICT_WARNING);
-            return;
-          }
-          localStorage.removeItem(SESSION_STORAGE_KEY);
-          storedRawRef.current = null;
-        } catch {
-          setStorageWarning(
-            '브라우저 저장소를 갱신하지 못했습니다. 현재 화면에서는 계속 사용할 수 있습니다.',
-          );
-        }
-        return;
-      }
-      preserveStoredSessionRef.current = false;
-      const session: GallerySessionV2 = {
-        version: 2,
-        revision: state.revision,
-        savedAt: new Date().toISOString(),
-        gallery: state.galleryData,
-        context: state.galleryContext,
-        profile: state.currentUserProfile,
-      };
+  const writeSnapshot = useCallback((snapshot: GalleryStorageState) => {
+    if (storageConflictRef.current) return;
+    if (!snapshot.galleryData || !snapshot.galleryContext) {
+      if (preserveStoredSessionRef.current) return;
       try {
         if (localStorage.getItem(SESSION_STORAGE_KEY) !== storedRawRef.current) {
           storageConflictRef.current = true;
           setStorageWarning(SESSION_CONFLICT_WARNING);
           return;
         }
-        const raw = serializeStoredSession(session);
-        localStorage.setItem(SESSION_STORAGE_KEY, raw);
-        storedRawRef.current = raw;
-        setStorageWarning(null);
+        localStorage.removeItem(SESSION_STORAGE_KEY);
+        storedRawRef.current = null;
       } catch {
-        setStorageWarning('브라우저 저장 공간이 부족해 현재 변경 내용이 저장되지 않았습니다.');
+        setStorageWarning(
+          '브라우저 저장소를 갱신하지 못했습니다. 현재 화면에서는 계속 사용할 수 있습니다.',
+        );
       }
+      return;
+    }
+    // A deferred snapshot may predate the current (search) session; leave that session's flags.
+    const isCurrent = snapshot === latestStateRef.current;
+    if (isCurrent) preserveStoredSessionRef.current = false;
+    const session: GallerySessionV2 = {
+      version: 2,
+      revision: snapshot.revision,
+      savedAt: new Date().toISOString(),
+      gallery: snapshot.galleryData,
+      context: snapshot.galleryContext,
+      profile: snapshot.currentUserProfile,
     };
-    if (navigator.locks?.request) {
+    try {
+      if (localStorage.getItem(SESSION_STORAGE_KEY) !== storedRawRef.current) {
+        storageConflictRef.current = true;
+        setStorageWarning(SESSION_CONFLICT_WARNING);
+        return;
+      }
+      const raw = serializeStoredSession(session);
+      localStorage.setItem(SESSION_STORAGE_KEY, raw);
+      storedRawRef.current = raw;
+      if (isCurrent) setStorageWarning(null);
+    } catch {
+      setStorageWarning('브라우저 저장 공간이 부족해 현재 변경 내용이 저장되지 않았습니다.');
+    }
+  }, []);
+
+  const requestSave = useCallback(
+    (save: () => void, isCancelled: () => boolean, onLockFailure?: () => void) => {
+      if (!navigator.locks?.request) {
+        save();
+        return;
+      }
       // All current-session writers use the same origin-scoped exclusive lock.
       void navigator.locks.request(SESSION_STORAGE_KEY, save).catch(() => {
-        if (!cancelled && !storageConflictRef.current) {
-          setStorageWarning(
-            '자동 저장 잠금을 얻지 못해 현재 변경 내용이 저장되지 않았습니다. 필요한 내용은 JSON으로 내보내주세요.',
-          );
-        }
+        if (isCancelled() || storageConflictRef.current) return;
+        onLockFailure?.();
+        setStorageWarning(LOCK_FAILURE_WARNING);
       });
-    } else {
-      save();
+    },
+    [],
+  );
+
+  const settleDeferredSave = useCallback((pending: DeferredSave) => {
+    clearTimeout(pending.timer);
+    pending.settled = true;
+    if (deferredSaveRef.current === pending) deferredSaveRef.current = null;
+  }, []);
+
+  // `unlocked` is only for pagehide: a lock granted after the page starts unloading never runs.
+  const flushDeferredSave = useCallback(
+    (unlocked = false) => {
+      const pending = deferredSaveRef.current;
+      if (!pending) return;
+      clearTimeout(pending.timer);
+      const save = () => {
+        if (pending.settled) return;
+        settleDeferredSave(pending);
+        // Read at write time so votes committed while the lock was queued are included.
+        writeSnapshot(pending.snapshot);
+      };
+      if (unlocked) save();
+      else
+        requestSave(
+          save,
+          () => pending.settled,
+          () => settleDeferredSave(pending),
+        );
+    },
+    [requestSave, settleDeferredSave, writeSnapshot],
+  );
+
+  useEffect(() => {
+    latestStateRef.current = state;
+    const deferred = deferNextSaveRef.current === true;
+    deferNextSaveRef.current = null;
+    if (storageConflictRef.current || state === initialLoad.state) return;
+    if (state.galleryContext?.useSearch) {
+      // Votes still owed to the previous session are written; this session never is.
+      flushDeferredSave();
+      preserveStoredSessionRef.current = true;
+      setStorageWarning(SEARCH_SESSION_STORAGE_WARNING);
+      return;
     }
+    if (deferred && state.galleryData && state.galleryContext) {
+      if (deferredSaveRef.current) {
+        deferredSaveRef.current.snapshot = state;
+      } else {
+        const pending: DeferredSave = { snapshot: state, timer: undefined, settled: false };
+        pending.timer = setTimeout(() => flushDeferredSave(), DEFERRED_SAVE_DELAY_MS);
+        deferredSaveRef.current = pending;
+      }
+      return;
+    }
+    // This save writes the newest state, so it also covers a pending deferred change.
+    if (deferredSaveRef.current) settleDeferredSave(deferredSaveRef.current);
+    let cancelled = false;
+    requestSave(
+      () => {
+        // A queued lock may be granted after a newer state or another tab has taken over.
+        if (!cancelled) writeSnapshot(state);
+      },
+      () => cancelled,
+    );
     return () => {
       cancelled = true;
     };
-  }, [state, initialLoad.state]);
+  }, [state, initialLoad.state, flushDeferredSave, requestSave, settleDeferredSave, writeSnapshot]);
 
-  const setGalleryData: Dispatch<SetStateAction<GalleryData | null>> = useCallback(value => {
-    setState(previous => ({
-      ...previous,
-      galleryData: typeof value === 'function' ? value(previous.galleryData) : value,
-    }));
+  useEffect(() => {
+    const flushWhenHidden = () => {
+      if (document.visibilityState === 'hidden') flushDeferredSave();
+    };
+    const flushOnPageHide = () => flushDeferredSave(true);
+    document.addEventListener('visibilitychange', flushWhenHidden);
+    window.addEventListener('pagehide', flushOnPageHide);
+    return () => {
+      document.removeEventListener('visibilitychange', flushWhenHidden);
+      window.removeEventListener('pagehide', flushOnPageHide);
+      flushDeferredSave();
+    };
+  }, [flushDeferredSave]);
+
+  const markSave = useCallback((deferrable: boolean) => {
+    deferNextSaveRef.current = deferrable && deferNextSaveRef.current !== false;
   }, []);
+
+  const updateGalleryData = useCallback(
+    (value: SetStateAction<GalleryData | null>, deferrable: boolean) => {
+      markSave(deferrable);
+      setState(previous => ({
+        ...previous,
+        galleryData: typeof value === 'function' ? value(previous.galleryData) : value,
+      }));
+    },
+    [markSave],
+  );
+
+  const setGalleryData: Dispatch<SetStateAction<GalleryData | null>> = useCallback(
+    value => updateGalleryData(value, false),
+    [updateGalleryData],
+  );
+
+  // Same as setGalleryData, but bursts of updates (votes) share one deferred write.
+  const setGalleryDataDeferred: Dispatch<SetStateAction<GalleryData | null>> = useCallback(
+    value => updateGalleryData(value, true),
+    [updateGalleryData],
+  );
 
   const setGalleryContext: Dispatch<SetStateAction<GalleryContextParams | null>> = useCallback(
     value => {
+      markSave(false);
       setState(previous => {
         const galleryContext = typeof value === 'function' ? value(previous.galleryContext) : value;
         if (galleryContext) preserveStoredSessionRef.current = galleryContext.useSearch;
@@ -489,15 +598,20 @@ export const useGalleryStorage = () => {
         };
       });
     },
-    [],
+    [markSave],
   );
 
-  const setCurrentUserProfile: Dispatch<SetStateAction<UserProfile | null>> = useCallback(value => {
-    setState(previous => ({
-      ...previous,
-      currentUserProfile: typeof value === 'function' ? value(previous.currentUserProfile) : value,
-    }));
-  }, []);
+  const setCurrentUserProfile: Dispatch<SetStateAction<UserProfile | null>> = useCallback(
+    value => {
+      markSave(false);
+      setState(previous => ({
+        ...previous,
+        currentUserProfile:
+          typeof value === 'function' ? value(previous.currentUserProfile) : value,
+      }));
+    },
+    [markSave],
+  );
 
   const replaceSession = useCallback(
     (
@@ -505,6 +619,7 @@ export const useGalleryStorage = () => {
       galleryContext: GalleryContextParams,
       currentUserProfile: UserProfile | null,
     ) => {
+      markSave(false);
       preserveStoredSessionRef.current = galleryContext.useSearch;
       setState(previous => ({
         galleryData,
@@ -514,7 +629,7 @@ export const useGalleryStorage = () => {
       }));
       setSelectedPostId(null);
     },
-    [],
+    [markSave],
   );
 
   const selectPost = useCallback((postId: string) => {
@@ -529,6 +644,7 @@ export const useGalleryStorage = () => {
     () => ({
       galleryData: state.galleryData,
       setGalleryData,
+      setGalleryDataDeferred,
       galleryContext: state.galleryContext,
       setGalleryContext,
       currentUserProfile: state.currentUserProfile,
@@ -549,6 +665,7 @@ export const useGalleryStorage = () => {
       setCurrentUserProfile,
       setGalleryContext,
       setGalleryData,
+      setGalleryDataDeferred,
       state,
       storageWarning,
     ],

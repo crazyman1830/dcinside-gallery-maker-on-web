@@ -166,7 +166,7 @@ describe('useUIState', () => {
       error: null,
       successMessage: null,
       warningMessage: null,
-      streamingText: '',
+      isStreaming: true,
       generationPhase: 'connecting',
       generationProgress: null,
       worldviewFeedback: null,
@@ -211,5 +211,27 @@ describe('useVoting', () => {
     rerender({ recs: 100, nonRecs: 50, voted: 'rec' });
     expect(result.current).toMatchObject({ recs: 100, nonRecs: 50, voted: 'rec' });
     expect(onChange).toHaveBeenCalledTimes(6);
+  });
+
+  it('follows the counts the parent stores for each vote', () => {
+    let stored = { recs: 5, nonRecs: 1, voted: null as 'rec' | 'nonrec' | null };
+    const onChange = vi.fn(
+      (voted: 'rec' | 'nonrec' | null, recs: number, nonRecs: number) =>
+        (stored = { recs, nonRecs, voted }),
+    );
+    const { result, rerender } = renderHook(() =>
+      useVoting(stored.recs, stored.nonRecs, stored.voted, onChange),
+    );
+
+    act(() => result.current.handleRecommend());
+    rerender();
+    expect(result.current).toMatchObject({ recs: 6, nonRecs: 1, voted: 'rec' });
+    act(() => result.current.handleNonRecommend());
+    rerender();
+    expect(result.current).toMatchObject({ recs: 5, nonRecs: 2, voted: 'nonrec' });
+    act(() => result.current.handleNonRecommend());
+    rerender();
+    expect(result.current).toMatchObject({ recs: 5, nonRecs: 1, voted: null });
+    expect(onChange).toHaveBeenLastCalledWith(null, 5, 1);
   });
 });
